@@ -98,14 +98,18 @@ def smart_search(job, city, api_key, max_pages):
     return all_results
 
 def generate_code(name, job, city, addr, tel):
-    # On utilise Unsplash au début pour que la démo soit jolie
+    # CORRECTION ICI : Remplacement de source.unsplash par loremflickr + Fallback
     prompt = f"""
     Crée un site One-Page HTML (TailwindCSS) pour {name} ({job}) à {city}. Adresse: {addr}, Tel: {tel}.
     
-    IMPORTANT :
-    1. Hero Image : src="https://source.unsplash.com/1600x900/?{job},work"
-    2. Formulaire : <form action="https://formsubmit.co/votre-email@gmail.com" method="POST">
-    3. Commence par <!DOCTYPE html>
+    IMPORTANT POUR LES IMAGES :
+    1. Utilise cette URL EXACTE pour l'image Hero : src="https://loremflickr.com/1200/800/{job.replace(' ', ',')}?random=1"
+    2. Ajoute TOUJOURS cet attribut de secours dans la balise <img> : onerror="this.src='https://placehold.co/1200x800?text=Image+Non+Trouvee'"
+    
+    STRUCTURE :
+    - Header avec l'image en background ou en <img> absolute.
+    - Formulaire de contact fonctionnel : <form action="https://formsubmit.co/votre-email@gmail.com" method="POST">
+    - Commence par <!DOCTYPE html>
     """
     try:
         resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
