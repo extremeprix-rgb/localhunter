@@ -3,8 +3,9 @@ import openai
 from serpapi import GoogleSearch
 import resend
 import time
+import re
 
-st.set_page_config(page_title="LocalHunter V6.2", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="LocalHunter V7 (Stable)", page_icon="🏢", layout="wide")
 
 # CSS
 st.markdown("""
@@ -22,78 +23,77 @@ except:
     st.error("⚠️ Clés API manquantes.")
     st.stop()
 
-# --- MOTEUR DE RECHERCHE CORRIGÉ ---
-def robust_search(job, city, api_key, max_pages):
+# --- MOTEUR DE RECHERCHE INTELLIGENT ---
+def smart_search(job, city, api_key, max_pages):
     all_results = []
     seen = set()
     status_box = st.empty()
     
-    # ÉTAPE 1 : Récupérer les coordonnées GPS de la ville (pour la pagination)
-    status_box.info(f"📍 Localisation GPS de {city}...")
+    # 1. PAGE 1 (Garanti sans erreur)
+    status_box.info(f"📍 Scan initial de {city}...")
+    
     try:
-        location_params = {
+        # Pas de paramètre 'start' ici, donc pas d'erreur 'Missing location'
+        params = {
             "engine": "google_maps",
-            "q": city,
+            "q": f"{job} {city}",
             "type": "search",
-            "api_key": api_key,
-            "num": 1
+            "google_domain": "google.fr",
+            "hl": "fr",
+            "num": 20,
+            "api_key": api_key
         }
-        loc_search = GoogleSearch(location_params)
-        loc_data = loc_search.get_dict()
+        search = GoogleSearch(params)
+        data = search.get_dict()
         
-        # On essaie de récupérer les coordonnées "ll" (Latitude, Longitude)
-        # SerpApi renvoie souvent ça dans 'search_metadata' ou 'local_results'
-        # Astuce : On utilise la requête initiale pour ancrer la recherche
-        ll_param = f"@{loc_data.get('search_metadata', {}).get('google_maps_url', '').split('@')[1].split(',')[0]},{loc_data.get('search_metadata', {}).get('google_maps_url', '').split('@')[1].split(',')[1]},14z"
-    except:
-        # Fallback si on ne trouve pas le GPS précis
-        ll_param = None 
+        # Récupération résultats P1
+        results = data.get("local_results", [])
+        for res in results:
+            pid = res.get("place_id")
+            if pid and pid not in seen:
+                all_results.append(res)
+                seen.add(pid)
 
-    # ÉTAPE 2 : Scan paginé
-    for page in range(max_pages):
-        start = page * 20
-        status_box.info(f"🔄 Scan Page {page+1}/{max_pages}...")
-        
+        # 2. TENTATIVE DE PAGINATION (Si possible)
+        # On essaie d'extraire le paramètre @lat,lon,zoom de l'URL fournie par Google
+        ll_token = None
         try:
-            params = {
-                "engine": "google_maps",
-                "q": f"{job} {city}",
-                "type": "search",
-                "google_domain": "google.fr",
-                "hl": "fr",
-                "num": 20,
-                "start": start,
-                "api_key": api_key
-            }
-            
-            # Si on a trouvé le GPS, on l'ajoute pour stabiliser la pagination
-            if ll_param and page > 0:
-                params["ll"] = ll_param
+            metadata = data.get("search_metadata", {})
+            url = metadata.get("google_maps_url", "")
+            # Regex pour trouver @12.345,67.890,14z
+            match = re.search(r'@([-0-9.]+),([-0-9.]+),([0-9.]+)z', url)
+            if match:
+                ll_token = f"@{match.group(1)},{match.group(2)},{match.group(3)}z"
+        except:
+            pass
 
-            search = GoogleSearch(params)
-            data = search.get_dict()
-            
-            if "error" in data:
-                # Si erreur de location, on réessaie sans pagination complexe
-                st.warning(f"⚠️ Erreur page {page+1}: {data['error']}. Tentative simple...")
-                continue
-                
-            results = data.get("local_results", [])
-            if not results: break
-                
-            for res in results:
-                pid = res.get("place_id")
-                if pid and pid not in seen:
-                    all_results.append(res)
-                    seen.add(pid)
-            
-            time.sleep(1) # Pause API
-            
-        except Exception as e:
-            st.error(f"Erreur technique: {e}")
-            break
-            
-    status_box.success(f"✅ Terminé : {len(all_results)} résultats.")
+        # Si on a trouvé le token magique, on continue
+        if ll_token and max_pages > 1:
+            for page in range(1, max_pages):
+                status_box.info(f"🔄 Extension du scan (Page {page+1})...")
+                try:
+                    params["start"] = page * 20
+                    params["ll"] = ll_token # Le sésame pour la pagination !
+                    
+                    sub_search = GoogleSearch(params)
+                    sub_data = sub_search.get_dict()
+                    sub_results = sub_data.get("local_results", [])
+                    
+                    if not sub_results: break
+                    
+                    for res in sub_results:
+                        pid = res.get("place_id")
+                        if pid and pid not in seen:
+                            all_results.append(res)
+                            seen.add(pid)
+                    time.sleep(1) # Pause API
+                except:
+                    break # On arrête silencieusement si la pagination plante
+        
+    except Exception as e:
+        st.error(f"Erreur de recherche : {e}")
+
+    status_box.success(f"✅ Terminé : {len(all_results)} entreprises analysées.")
     time.sleep(2)
     status_box.empty()
     return all_results
@@ -118,13 +118,13 @@ def modify_code(html, ins):
     except: return html
 
 # --- INTERFACE ---
-st.title("LocalHunter V6.2 (Correctif GPS)")
+st.title("LocalHunter V7 (Stable)")
 
 tab1, tab2 = st.tabs(["CHASSE", "ATELIER"])
 
 with tab1:
     c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
-    with c1: job = st.text_input("Activité", "Coiffeur")
+    with c1: job = st.text_input("Activité", "Maçon")
     with c2: city = st.text_input("Ville", "Bordeaux")
     with c3: pages = st.number_input("Pages", 1, 5, 2)
     with c4: 
@@ -134,8 +134,12 @@ with tab1:
 
     if launch:
         st.session_state.prospects = []
-        raw = robust_search(job, city, serpapi_key, pages)
+        # On utilise la recherche intelligente qui ne plante pas
+        raw = smart_search(job, city, serpapi_key, pages)
+        
+        # Filtrage strict
         clean = [r for r in raw if "website" not in r]
+        
         st.session_state.prospects = clean
         st.session_state.stats = (len(raw), len(clean))
 
@@ -143,7 +147,10 @@ with tab1:
         if 'stats' in st.session_state:
             tot, kep = st.session_state.stats
             st.info(f"📊 {tot} analysés → {kep} sans site.")
-        
+            
+            if tot > 0 and kep == 0:
+                st.warning("Tout le monde a un site ici ! Changez de ville ou de métier.")
+
         for p in st.session_state.prospects:
             with st.expander(f"📍 {p.get('title')} ({p.get('address')})"):
                 c_a, c_b = st.columns([1, 2])
@@ -157,6 +164,7 @@ with tab1:
                 
                 with c_b:
                     if f"h_{pid}" in st.session_state:
+                        st.text("👇 Copiez le code (Bouton en haut à droite)")
                         st.code(st.session_state[f"h_{pid}"], language="html")
                         with st.expander("Voir"): st.components.v1.html(st.session_state[f"h_{pid}"], height=300, scrolling=True)
                     if f"e_{pid}" in st.session_state:
