@@ -1,5 +1,5 @@
 import streamlit as st
-import openai # On utilise la librairie standard, mais connectée à Mistral
+import openai
 from serpapi import GoogleSearch
 import resend
 
@@ -16,15 +16,15 @@ st.markdown("""
 
 # --- SECRETS ---
 try:
-    # On cherche la clé MISTRAL ou OPENAI (pour faciliter la transition)
+    # On cherche la clé MISTRAL ou OPENAI
     api_key = st.secrets.get("MISTRAL_KEY", st.secrets.get("OPENAI_KEY"))
     serpapi_key = st.secrets["SERPAPI_KEY"]
     resend.api_key = st.secrets["RESEND_KEY"]
     
-    # Configuration du client pour MISTRAL
+    # Client Mistral
     client = openai.OpenAI(
         api_key=api_key,
-        base_url="https://api.mistral.ai/v1" # On change l'adresse du cerveau !
+        base_url="https://api.mistral.ai/v1"
     )
     api_ready = True
 except Exception as e:
@@ -35,7 +35,8 @@ except Exception as e:
 with st.sidebar:
     st.header("🇫🇷 LocalHunter")
     st.caption("Propulsé par Mistral AI")
-    st.success("✅ Système connecté")
+    if api_ready:
+        st.success("✅ Système connecté")
 
 # --- FONCTIONS ---
 def search_google_maps(job, city, api_key):
@@ -57,7 +58,7 @@ def search_google_maps(job, city, api_key):
         return []
 
 def generate_website_code(business_name, activity, city, address, phone):
-    """Génération via Mistral Large ou Small"""
+    """Génération via Mistral"""
     prompt = f"""
     Tu es un expert web. Crée le code HTML complet (une seule page) pour : {business_name} ({activity}) à {city}.
     Infos: {address}, {phone}.
@@ -68,7 +69,7 @@ def generate_website_code(business_name, activity, city, address, phone):
     
     try:
         response = client.chat.completions.create(
-            model="mistral-large-latest", # Le modèle le plus intelligent de Mistral
+            model="mistral-large-latest",
             messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content.strip().replace("```html", "").replace("```", "")
@@ -86,17 +87,35 @@ if 'prospects' not in st.session_state: st.session_state.prospects = []
 
 if st.button("🔎 Lancer la recherche"):
     with st.status("Recherche en cours..."):
-        raw = search_google_maps(job_input, city_input, serpapi_key)
-        clean = [r for r in raw if "website" not in r]
-        st.session_state.prospects = clean
-        st.write(f"{len(clean)} prospects sans site trouvés.")
+        raw_results = search_google_maps(job_input, city_input, serpapi_key)
+        
+        # --- CORRECTIF DU BUG ---
+        # On transforme les données brutes en format propre pour éviter l'erreur de clé
+        clean_prospects = []
+        for res in raw_results:
+            if "website" not in res:
+                clean_prospects.append({
+                    "name": res.get("title", "Nom inconnu"), # On sécurise avec .get()
+                    "address": res.get("address", "Adresse inconnue"),
+                    "phone": res.get("phone", "Non renseigné"),
+                    "place_id": res.get("place_id", "no_id")
+                })
+        
+        st.session_state.prospects = clean_prospects
+        st.write(f"✅ {len(clean_prospects)} prospects sans site trouvés.")
 
 if st.session_state.prospects:
     st.divider()
     for p in st.session_state.prospects:
+        # Maintenant p['name'] existe forcément
         with st.expander(f"📍 {p['name']}"):
-            if st.button(f"✨ Générer Site", key=p['place_id']):
-                with st.spinner("Mistral rédige le code..."):
-                    html = generate_website_code(p['name'], job_input, city_input, p['address'], p['phone'])
-                    st.components.v1.html(html, height=500, scrolling=True)
-                    st.download_button("Télécharger HTML", html, file_name=f"{p['name']}.html")
+            c1, c2 = st.columns([3, 1])
+            with c1:
+                st.write(f"📞 {p['phone']}")
+                st.write(f"🏠 {p['address']}")
+            with c2:
+                if st.button(f"✨ Générer Site", key=p['place_id']):
+                    with st.spinner("Mistral rédige le code..."):
+                        html = generate_website_code(p['name'], job_input, city_input, p['address'], p['phone'])
+                        st.components.v1.html(html, height=500, scrolling=True)
+                        st.download_button("Télécharger HTML", html, file_name=f"{p['name']}.html")
