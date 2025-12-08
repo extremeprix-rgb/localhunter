@@ -4,14 +4,14 @@ from serpapi import GoogleSearch
 import resend
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="LocalHunter Ultimate", page_icon="💎", layout="wide")
+st.set_page_config(page_title="LocalHunter V4", page_icon="🏢", layout="wide")
 
 # CSS
 st.markdown("""
 <style>
     div.stButton > button:first-child { background-color: #0f172a; color: white; border-radius: 8px; border: none; font-weight: bold; }
     div.stButton > button:hover { background-color: #334155; color: white; }
-    .stTextArea textarea { font-size: 14px; }
+    .success-box { padding: 15px; background-color: #dcfce7; color: #166534; border-radius: 10px; margin-bottom: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -36,134 +36,156 @@ def search_google_maps(job, city, api_key):
         }
         search = GoogleSearch(params)
         return search.get_dict().get("local_results", [])
-    except Exception as e:
-        return []
+    except: return []
 
 def generate_website_code(business_name, activity, city, address, phone):
     prompt = f"""
     Tu es un développeur Senior. Crée un site Web "Premium" (One-Page Scrolling) pour {business_name} ({activity}) à {city}.
+    Infos: {address}, {phone}.
     
     Structure OBLIGATOIRE :
-    1. Navbar Fixe (Sticky) : Accueil, À Propos, Services, Contact.
-    2. Hero Section : Grande image de fond, Titre accrocheur, bouton "Prendre RDV".
-    3. Section "À Propos" : Texte rassurant sur l'artisanat local.
-    4. Section "Nos Services" : 3 cartes (Cards) détaillées avec icônes.
-    5. Section "Témoignages" : 2 faux avis clients positifs.
-    6. Footer : Mentions légales, adresse ({address}), tel ({phone}).
+    1. Navbar Fixe. 2. Hero avec CTA. 3. Services (3 cartes). 4. Témoignages. 5. Contact + Map + Footer.
     
-    Design : Utilise TailwindCSS. Couleurs professionnelles (Bleu nuit, Doré, Blanc).
-    Règle : Code HTML complet, prêt à l'emploi. Pas de markdown.
+    Design : TailwindCSS. Couleurs : Slate-900 (fond), Amber-500 (boutons), White (texte).
+    Règle : Code HTML complet UNIQUEMENT.
     """
     try:
         response = client.chat.completions.create(
-            model="mistral-large-latest",
-            messages=[{"role": "user", "content": prompt}]
+            model="mistral-large-latest", messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content.strip().replace("```html", "").replace("```", "")
-    except Exception as e:
-        return f"<h1>Erreur IA</h1><p>{str(e)}</p>"
+    except Exception as e: return f"<h1>Erreur IA: {e}</h1>"
 
 def modify_website_code(current_html, instructions):
     prompt = f"""
-    Voici un code HTML existant :
-    {current_html}
+    Tu es un expert en maintenance web. Voici un fichier HTML :
     
-    L'utilisateur veut cette modification : "{instructions}"
+    {current_html[:15000]}... (code tronqué pour l'instruction)
     
-    Tâche : Réécris le code HTML en appliquant la modification. Garde le reste intact.
-    Règle : Renvoie UNIQUEMENT le code HTML complet.
+    L'utilisateur veut cette modification précise : "{instructions}"
+    
+    Règles :
+    1. Analyse le code et applique UNIQUEMENT la modification demandée.
+    2. Ne casse pas le design TailwindCSS existant.
+    3. Renvoie le code HTML COMPLET et corrigé.
     """
     try:
+        # Note : On envoie le code entier si possible, attention à la limite de taille
+        # Pour ce MVP on fait confiance à la fenêtre de contexte de Mistral
+        full_prompt = f"Code HTML:\n{current_html}\n\nINSTRUCTION: {instructions}\n\nRenvoie le code HTML complet modifié :"
+        
         response = client.chat.completions.create(
-            model="mistral-large-latest",
-            messages=[{"role": "user", "content": prompt}]
+            model="mistral-large-latest", messages=[{"role": "user", "content": full_prompt}]
         )
         return response.choices[0].message.content.strip().replace("```html", "").replace("```", "")
-    except Exception as e:
-        return current_html # On renvoie l'ancien si erreur
+    except Exception as e: return f"Erreur modification: {e}"
 
-def generate_sales_email(business_name, activity):
-    prompt = f"Rédige un email de prospection B2B court pour {business_name} ({activity}). Ton : Expert Web. Objectif : Montrer le site démo créé."
+def generate_sales_email(business_name):
+    prompt = f"Ecris un email court pour vendre ce site à {business_name}. Méthode AIDA. Ton bienveillant."
     try:
         response = client.chat.completions.create(
-            model="mistral-large-latest",
-            messages=[{"role": "user", "content": prompt}]
+            model="mistral-large-latest", messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content
-    except:
-        return "Erreur email"
+    except: return "Erreur email"
 
 # --- INTERFACE ---
-st.title("💎 Usine à Sites Web (Premium Edition)")
-st.caption("Scraping • Génération Premium • Retouches • Emailing")
+st.title("🚀 LocalHunter - Suite Complète")
 
-col1, col2 = st.columns(2)
-with col1: job_input = st.text_input("Activité", "Rénovation")
-with col2: city_input = st.text_input("Ville", "Lyon")
+# On sépare les deux métiers : Chasseur vs Développeur
+tab_hunter, tab_editor = st.tabs(["🔫 Mode Chasseur (Nouveaux)", "🔧 Atelier de Retouche (Clients)"])
 
-if 'prospects' not in st.session_state: st.session_state.prospects = []
+# --- TAB 1 : CHASSEUR ---
+with tab_hunter:
+    col1, col2 = st.columns(2)
+    with col1: job_input = st.text_input("Activité", "Coiffeur")
+    with col2: city_input = st.text_input("Ville", "Bordeaux")
 
-if st.button("🔎 Trouver des clients"):
-    with st.status("Chasse en cours..."):
-        raw = search_google_maps(job_input, city_input, serpapi_key)
-        clean = []
-        for res in raw:
-            if "website" not in res:
-                clean.append({
-                    "name": res.get("title", "Inconnu"),
-                    "address": res.get("address", "Inconnue"),
-                    "phone": res.get("phone", "Non renseigné"),
-                    "place_id": res.get("place_id", "id")
-                })
-        st.session_state.prospects = clean
-        st.write(f"✅ {len(clean)} prospects qualifiés.")
+    if 'prospects' not in st.session_state: st.session_state.prospects = []
 
-if st.session_state.prospects:
-    st.divider()
-    for p in st.session_state.prospects:
-        with st.expander(f"🏢 {p['name']} ({p['address']})"):
-            
-            # Gestion des IDs uniques pour le State
-            pid = p['place_id']
-            html_key = f"html_{pid}"
-            email_key = f"email_{pid}"
+    if st.button("🔎 Lancer la recherche"):
+        with st.status("Scan de la zone..."):
+            raw = search_google_maps(job_input, city_input, serpapi_key)
+            clean = []
+            for res in raw:
+                if "website" not in res:
+                    clean.append({
+                        "name": res.get("title", "Inconnu"),
+                        "address": res.get("address", ""),
+                        "phone": res.get("phone", ""),
+                        "place_id": res.get("place_id", "id")
+                    })
+            st.session_state.prospects = clean
+            st.success(f"{len(clean)} cibles identifiées.")
 
-            # Zone 1 : Génération
-            c1, c2 = st.columns([1, 1])
-            with c1:
-                if st.button(f"✨ Créer Site Premium", key=f"btn_gen_{pid}"):
-                    with st.spinner("Architecture du site en cours..."):
-                        html = generate_website_code(p['name'], job_input, city_input, p['address'], p['phone'])
-                        st.session_state[html_key] = html
-            
-            with c2:
-                if st.button(f"📧 Préparer Email", key=f"btn_mail_{pid}"):
-                    mail = generate_sales_email(p['name'], job_input)
-                    st.session_state[email_key] = mail
-
-            # Zone 2 : Modification & Affichage
-            if html_key in st.session_state:
-                st.markdown("---")
-                st.subheader("🎨 Studio de Retouche")
+    if st.session_state.prospects:
+        for p in st.session_state.prospects:
+            with st.expander(f"📍 {p['name']}"):
+                c1, c2 = st.columns([1, 1])
+                pid = p['place_id']
                 
-                # Input de modification
-                modif_txt = st.text_input("Demander une retouche à l'IA", placeholder="Ex: Change le bleu en vert, Ajoute une section Tarifs...", key=f"input_{pid}")
+                with c1:
+                    if st.button(f"✨ Générer V1", key=f"gen_{pid}"):
+                        with st.spinner("Construction..."):
+                            html = generate_website_code(p['name'], job_input, city_input, p['address'], p['phone'])
+                            st.session_state[f"html_{pid}"] = html
+                with c2:
+                    if st.button(f"📧 Email", key=f"mail_{pid}"):
+                        st.session_state[f"email_{pid}"] = generate_sales_email(p['name'])
+
+                if f"html_{pid}" in st.session_state:
+                    st.download_button("💾 Télécharger HTML", st.session_state[f"html_{pid}"], file_name=f"{p['name']}.html")
+                    st.components.v1.html(st.session_state[f"html_{pid}"], height=400, scrolling=True)
                 
-                if st.button("🛠️ Appliquer la modification", key=f"btn_modif_{pid}"):
-                    if modif_txt:
-                        with st.spinner("L'IA applique vos corrections..."):
-                            new_html = modify_website_code(st.session_state[html_key], modif_txt)
-                            st.session_state[html_key] = new_html
-                            st.success("Modifications appliquées !")
-                            st.rerun()
+                if f"email_{pid}" in st.session_state:
+                    st.info("Copiez l'email ci-dessous :")
+                    st.code(st.session_state[f"email_{pid}"])
 
-                # Visualisation
-                tab1, tab2 = st.tabs(["👁️ Aperçu du Site", "💾 Télécharger"])
-                with tab1:
-                    st.components.v1.html(st.session_state[html_key], height=600, scrolling=True)
-                with tab2:
-                    st.download_button("Télécharger HTML", st.session_state[html_key], file_name=f"{p['name']}_v3.html")
+# --- TAB 2 : ATELIER DE RETOUCHE ---
+with tab_editor:
+    st.header("🔧 Modification de Site")
+    st.markdown("Chargez un fichier HTML existant pour demander des modifications à l'IA.")
+    
+    uploaded_file = st.file_uploader("📂 Importer le fichier HTML du client", type=['html'])
+    
+    if uploaded_file is not None:
+        # Lire le fichier
+        string_data = uploaded_file.getvalue().decode("utf-8")
+        st.success("Fichier chargé avec succès !")
+        
+        # Afficher l'aperçu actuel
+        with st.expander("Voir le site actuel"):
+            st.components.v1.html(string_data, height=400, scrolling=True)
+            
+        st.divider()
+        
+        # Zone de modification
+        col_edit1, col_edit2 = st.columns([3, 1])
+        with col_edit1:
+            instruction = st.text_area("Quelles modifications voulez-vous ?", placeholder="Ex: Change le titre principal par 'Salon de Coiffure Bio'. Mets le fond en rose pâle.")
+        with col_edit2:
+            st.write("") # Spacer
+            st.write("") 
+            if st.button("🛠️ Lancer les retouches", type="primary"):
+                if instruction:
+                    with st.spinner("L'IA réécrit le code..."):
+                        new_code = modify_website_code(string_data, instruction)
+                        st.session_state['modified_html'] = new_code
+                        st.success("Modifications terminées !")
+                        st.rerun()
 
-            if email_key in st.session_state:
-                st.info("📧 Email généré (à copier)")
-                st.code(st.session_state[email_key])
+    # Résultat de la modification
+    if 'modified_html' in st.session_state:
+        st.divider()
+        st.subheader("🎉 Nouvelle Version")
+        
+        dwn_col, view_col = st.columns([1, 3])
+        with dwn_col:
+            st.download_button(
+                "💾 Télécharger V2", 
+                st.session_state['modified_html'], 
+                file_name="site_modifie.html",
+                mime="text/html"
+            )
+        with view_col:
+            st.components.v1.html(st.session_state['modified_html'], height=600, scrolling=True)
