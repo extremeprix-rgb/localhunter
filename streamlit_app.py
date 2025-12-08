@@ -50,15 +50,19 @@ def get_images_from_html(html_content):
 def replace_specific_image(html_content, image_data, index):
     """Remplace une image spécifique (par son index) par la version Base64"""
     # Capture: (début tag + src=") (contenu url) (fin quote + fin tag)
+    # flag re.S (dotall) n'est pas nécessaire ici car img est souvent sur 1 ligne, mais attention si multiline
     pattern = r'(<img[^>]+src=["\'])([^"\']*)(["\'][^>]*>)'
     matches = list(re.finditer(pattern, html_content))
     
     if 0 <= index < len(matches):
         m = matches[index]
         # Reconstruction chirurgicale
+        # On remplace UNIQUEMENT cette occurrence dans le texte
+        # Astuce : on split le texte en 3 parties : avant, match, après
+        start = m.start()
+        end = m.end()
+        
         new_tag = f"{m.group(1)}{image_data}{m.group(3)}"
-        # Remplacement dans la string originale par découpage
-        start, end = m.span()
         return html_content[:start] + new_tag + html_content[end:]
     return html_content
 
@@ -84,7 +88,6 @@ def smart_search(job, city, api_key, max_pages):
             if pid and pid not in seen:
                 all_results.append(res)
                 seen.add(pid)
-        # Pagination simplifiée
         try:
             url = data.get("search_metadata", {}).get("google_maps_url", "")
             match = re.search(r'@([-0-9.]+),([-0-9.]+),([0-9.]+)z', url)
@@ -110,19 +113,27 @@ def smart_search(job, city, api_key, max_pages):
     return all_results
 
 def generate_code(name, job, city, addr, tel):
+    # Prompt amélioré pour un site plus complet
     prompt = f"""
-    Crée un site One-Page HTML (TailwindCSS) pour {name} ({job}) à {city}. Adresse: {addr}, Tel: {tel}.
+    Crée un site One-Page HTML (TailwindCSS) COMPLET pour {name} ({job}) à {city}.
+    Infos: Adresse: {addr}, Tel: {tel}.
     
-    IMPORTANT IMAGES :
-    1. Hero: src="https://loremflickr.com/1200/800/{job.replace(' ', ',')}?random=1"
-    2. Ajoute 2 autres images pour les services (random=2 et random=3).
-    3. Ajoute TOUJOURS : onerror="this.src='https://placehold.co/600x400?text=Image+Missing'"
+    IMAGES OBLIGATOIRES (Utilise ces URLs placeholders):
+    1. Hero: "https://loremflickr.com/1200/800/{job.replace(' ', ',')}?random=1"
+    2. Section Histoire: "https://loremflickr.com/800/600/{job.replace(' ', ',')}?random=2"
+    3. Section Services (3 images icones): Pas besoin d'images lourdes, utilise des emojis.
     
-    STRUCTURE :
-    - Header Hero
-    - Section Services (3 cartes)
-    - Formulaire Contact: <form action="https://formsubmit.co/votre-email@gmail.com" method="POST">
+    STRUCTURE REQUISE :
+    1. Navbar (Logo + Tel)
+    2. Hero Section (Grand titre, appel à l'action, image de fond)
+    3. Section "Notre Histoire" : Texte de présentation + Photo à droite. Raconte que l'entreprise est experte depuis 10 ans.
+    4. Section Services (3 cartes)
+    5. Section Témoignages (2 avis clients fictifs)
+    6. Contact : Formulaire <form action="https://formsubmit.co/votre-email@gmail.com" method="POST">
+    
+    TECHNIQUE :
     - Commence par <!DOCTYPE html>
+    - Ajoute onerror="this.src='https://placehold.co/600x400'" sur TOUTES les balises <img>.
     """
     try:
         resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
@@ -167,56 +178,70 @@ with tab1:
                 with c_a:
                     if st.button("⚡ Site", key=f"g_{pid}"):
                         st.session_state[f"h_{pid}"] = generate_code(p.get('title'), job, city, p.get('address'), p.get('phone'))
+                        # On envoie direct en session finale pour l'atelier
+                        st.session_state['final'] = st.session_state[f"h_{pid}"]
+                        st.success("Site généré ! Allez dans l'onglet Atelier.")
                     if st.button("📧 Email", key=f"m_{pid}"):
                         st.session_state[f"e_{pid}"] = generate_email_prospection(p.get('title'))
                 with c_b:
                     if f"h_{pid}" in st.session_state:
-                        st.code(st.session_state[f"h_{pid}"], language="html")
+                        st.text_area("Code", st.session_state[f"h_{pid}"], height=100)
                     if f"e_{pid}" in st.session_state:
                         st.text_area("Mail", st.session_state[f"e_{pid}"])
 
 with tab2:
     st.header("🔧 Customisation Pro")
     
+    # Zone de chargement
     up_html = st.file_uploader("1. Charger le fichier HTML", type=['html'])
     
-    # Récupération du HTML soit de l'upload, soit de la session si on vient de générer
-    current_html = None
+    # Logique pour récupérer le HTML (soit upload, soit généré)
+    current_html = ""
     if up_html:
         current_html = up_html.getvalue().decode("utf-8")
+        # Si on upload un nouveau, on écrase la session
+        if 'final' not in st.session_state or st.session_state['final'] != current_html:
+             st.session_state['final'] = current_html
     elif 'final' in st.session_state:
         current_html = st.session_state['final']
 
     if current_html:
-        st.success("Fichier HTML chargé/détecté.")
+        st.success("Fichier HTML actif.")
         
         col_img, col_mail = st.columns(2)
         
         with col_img:
             st.subheader("🖼️ Gestion des Images")
             
-            # Analyse des images présentes
+            # Analyse des images
             images_found = get_images_from_html(current_html)
             
             if not images_found:
-                st.warning("Aucune image trouvée dans ce code HTML.")
+                st.warning("Aucune balise <img> trouvée.")
             else:
-                st.info(f"{len(images_found)} images détectées sur le site.")
+                # Création du menu déroulant
+                # On crée une liste de tuples (index, description)
+                options = list(range(len(images_found)))
                 
-                # Menu déroulant pour choisir quelle image remplacer
-                img_options = {i: f"Image #{i+1} : {url[:40]}..." for i, url in enumerate(images_found)}
+                def format_func(i):
+                    url = images_found[i]
+                    name = "Hero/Header" if i == 0 else f"Image #{i+1}"
+                    return f"{name} ({url[:30]}...)"
+                
                 selected_index = st.selectbox(
-                    "Quelle image voulez-vous remplacer ?", 
-                    options=list(img_options.keys()),
-                    format_func=lambda x: img_options[x]
+                    "Quelle image remplacer ?", 
+                    options=options,
+                    format_func=format_func
                 )
                 
-                up_img = st.file_uploader("Charger la nouvelle photo (JPG/PNG)", type=['jpg', 'jpeg', 'png'])
+                up_img = st.file_uploader("Nouvelle photo (JPG/PNG)", type=['jpg', 'jpeg', 'png'], key="img_uploader")
                 
-                if up_img and st.button("Fusionner cette image"):
+                if up_img and st.button("Fusionner l'image sélectionnée"):
                     b64_img = image_to_base64(up_img)
-                    st.session_state['final'] = replace_specific_image(current_html, b64_img, selected_index)
-                    st.success(f"Image #{selected_index+1} remplacée avec succès !")
+                    # Mise à jour
+                    new_html = replace_specific_image(current_html, b64_img, selected_index)
+                    st.session_state['final'] = new_html
+                    st.success(f"Image #{selected_index+1} remplacée !")
                     st.rerun()
 
         with col_mail:
@@ -224,22 +249,23 @@ with tab2:
             client_email = st.text_input("Email du client :")
             if st.button("Configurer Email"):
                 if "@" in client_email:
-                    st.session_state['final'] = surgical_email_config(current_html, client_email)
-                    st.success("Configuré !")
+                    new_html = surgical_email_config(current_html, client_email)
+                    st.session_state['final'] = new_html
+                    st.success("Email configuré !")
                     st.rerun()
 
-    # Zone de téléchargement et prévisualisation
+    # Preview & Download
     if 'final' in st.session_state:
         st.divider()
-        st.success("🎉 VERSION FINALE À JOUR")
-        # st.code(st.session_state['final'], language="html") # Optionnel, prend de la place
+        st.markdown("### ⬇️ Téléchargement")
         
         st.download_button(
-            "💾 Télécharger le fichier index.html", 
+            "💾 Télécharger index.html", 
             st.session_state['final'],
             file_name="index.html",
-            mime="text/html"
+            mime="text/html",
+            use_container_width=True
         )
         
-        with st.expander("Aperçu Final du Site", expanded=True):
-            st.components.v1.html(st.session_state['final'], height=600, scrolling=True)
+        st.markdown("### 👁️ Aperçu")
+        st.components.v1.html(st.session_state['final'], height=600, scrolling=True)
