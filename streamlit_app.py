@@ -4,8 +4,9 @@ from serpapi import GoogleSearch
 import resend
 import time
 import re
+import base64
 
-st.set_page_config(page_title="LocalHunter V10 (Final)", page_icon="🏆", layout="wide")
+st.set_page_config(page_title="LocalHunter V11 (Base64)", page_icon="🏆", layout="wide")
 
 # CSS
 st.markdown("""
@@ -23,7 +24,7 @@ except:
     st.error("⚠️ Clés API manquantes.")
     st.stop()
 
-# --- OUTILS CHIRURGICAUX (PYTHON PUR - PAS D'IA) ---
+# --- FONCTIONS TECHNIQUES ---
 
 def clean_html_output(raw_text):
     text = raw_text.replace("```html", "").replace("```", "").strip()
@@ -32,26 +33,29 @@ def clean_html_output(raw_text):
     if start != -1 and end != -1: return text[start : end + 7]
     return text
 
-def surgical_image_replace(html_content, new_image_name):
-    """Remplace la première image (Hero) sans toucher au reste du code"""
-    # On cherche une balise img qui semble être importante (souvent la première ou celle avec class object-cover)
-    # Regex : cherche <img ... src="..." ...>
+def image_to_base64(uploaded_file):
+    """Transforme une image en chaîne de caractères pour l'incruster dans le HTML"""
+    bytes_data = uploaded_file.getvalue()
+    b64_str = base64.b64encode(bytes_data).decode()
+    # On devine le mime type (jpg/png)
+    mime = "image/png" if uploaded_file.name.endswith(".png") else "image/jpeg"
+    return f"data:{mime};base64,{b64_str}"
+
+def surgical_image_replace(html_content, image_data):
+    """Remplace la première image par l'image Base64 incassable"""
+    # Regex : cherche la première balise img et remplace son contenu src
     pattern = r'(<img[^>]*src=")([^"]*)("[^>]*>)'
-    
-    # On remplace UNIQUEMENT la première occurrence (count=1)
-    # C'est souvent l'image du Hero Section
-    new_html = re.sub(pattern, fr'\1{new_image_name}\3', html_content, count=1)
+    # On injecte la grosse chaîne base64 à la place de l'URL
+    new_html = re.sub(pattern, fr'\1{image_data}\3', html_content, count=1)
     return new_html
 
 def surgical_email_config(html_content, email):
-    """Configure FormSubmit sans toucher au design"""
     pattern = r'action="https://formsubmit.co/[^"]*"'
     replacement = f'action="https://formsubmit.co/{email}"'
     new_html = re.sub(pattern, replacement, html_content)
     return new_html
 
-# --- SEARCH & GEN (V7/V9 Logic) ---
-
+# --- SEARCH & GEN ---
 def smart_search(job, city, api_key, max_pages):
     all_results = []
     seen = set()
@@ -94,12 +98,12 @@ def smart_search(job, city, api_key, max_pages):
     return all_results
 
 def generate_code(name, job, city, addr, tel):
-    # Prompt optimisé pour mettre une image placeholder facile à repérer
+    # On utilise Unsplash au début pour que la démo soit jolie
     prompt = f"""
     Crée un site One-Page HTML (TailwindCSS) pour {name} ({job}) à {city}. Adresse: {addr}, Tel: {tel}.
     
     IMPORTANT :
-    1. Pour l'image principale (Hero), utilise src="https://source.unsplash.com/1600x900/?{job}"
+    1. Hero Image : src="https://source.unsplash.com/1600x900/?{job},work"
     2. Formulaire : <form action="https://formsubmit.co/votre-email@gmail.com" method="POST">
     3. Commence par <!DOCTYPE html>
     """
@@ -115,9 +119,9 @@ def generate_email_prospection(name):
     except: return "Erreur Email"
 
 # --- INTERFACE ---
-st.title("LocalHunter V10 (Agence Web IA)")
+st.title("LocalHunter V11 (Images Incassables)")
 
-tab1, tab2 = st.tabs(["CHASSE", "ATELIER (LIVRAISON)"])
+tab1, tab2 = st.tabs(["CHASSE", "ATELIER (Customisation)"])
 
 with tab1:
     c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
@@ -155,41 +159,50 @@ with tab1:
                         st.text_area("Mail", st.session_state[f"e_{pid}"])
 
 with tab2:
-    st.header("🔧 Préparation à la livraison (Safe Mode)")
-    st.info("Ici, on ne touche pas au design global. On change juste les éléments clés sans risque.")
+    st.header("🔧 Customisation Pro")
     
-    up = st.file_uploader("Charger le HTML du client", type=['html'])
+    up_html = st.file_uploader("1. Charger le fichier HTML", type=['html'])
     
-    if up:
-        html = up.getvalue().decode("utf-8")
-        st.success("Fichier chargé.")
+    if up_html:
+        html = up_html.getvalue().decode("utf-8")
+        st.success("Fichier HTML chargé.")
         
         col_img, col_mail = st.columns(2)
         
         with col_img:
-            st.subheader("🖼️ Changer l'image principale")
-            st.markdown("Mettez ici le nom exact de votre fichier image (ex: `camion.jpg`).")
-            img_name = st.text_input("Nom du fichier image :", placeholder="camion.jpg")
+            st.subheader("🖼️ Insérer Image Client")
+            st.info("Cette image sera incrustée dans le fichier. Pas de lien cassé !")
             
-            if st.button("Remplacer l'image (Python)"):
-                if img_name:
-                    st.session_state['final'] = surgical_image_replace(html, img_name)
-                    st.success(f"Image pointée vers '{img_name}' !")
-                    st.rerun()
+            up_img = st.file_uploader("2. Charger la photo (JPG/PNG)", type=['jpg', 'jpeg', 'png'])
+            
+            if up_img and st.button("Fusionner Image & Code"):
+                b64_img = image_to_base64(up_img)
+                st.session_state['final'] = surgical_image_replace(html, b64_img)
+                st.success("Image fusionnée !")
+                st.rerun()
 
         with col_mail:
-            st.subheader("📧 Configurer le Formulaire")
-            client_email = st.text_input("Email du client :", placeholder="client@orange.fr")
-            
-            if st.button("Activer Formulaire (Python)"):
+            st.subheader("📧 Email Formulaire")
+            client_email = st.text_input("Email du client :")
+            if st.button("Configurer"):
                 if "@" in client_email:
                     st.session_state['final'] = surgical_email_config(html, client_email)
-                    st.success(f"Formulaire dirigé vers {client_email} !")
+                    st.success("Configuré !")
                     st.rerun()
 
     if 'final' in st.session_state:
         st.divider()
-        st.success("🎉 CODE FINAL PRÊT (Design 100% préservé)")
+        st.success("🎉 FICHIER FINAL (Prêt à envoyer)")
         st.code(st.session_state['final'], language="html")
-        with st.expander("Aperçu (L'image sera cassée ici, c'est normal)"):
-            st.components.v1.html(st.session_state['final'], height=400, scrolling=True)
+        
+        # Le bouton de téléchargement natif de Streamlit marche bien maintenant 
+        # car on télécharge le résultat final
+        st.download_button(
+            "💾 Télécharger le fichier index.html", 
+            st.session_state['final'],
+            file_name="index.html",
+            mime="text/html"
+        )
+        
+        with st.expander("Aperçu Final (Image incluse)"):
+            st.components.v1.html(st.session_state['final'], height=500, scrolling=True)
