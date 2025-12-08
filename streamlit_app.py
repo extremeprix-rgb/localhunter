@@ -5,7 +5,7 @@ import resend
 import time
 import re
 
-st.set_page_config(page_title="LocalHunter V8 (Clean)", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="LocalHunter V9 (Formulaires)", page_icon="🏢", layout="wide")
 
 # CSS
 st.markdown("""
@@ -23,48 +23,28 @@ except:
     st.error("⚠️ Clés API manquantes.")
     st.stop()
 
-# --- FONCTION DE NETTOYAGE (LA CISAILLE) ---
+# --- FONCTION NETTOYAGE ---
 def clean_html_output(raw_text):
-    """Garde uniquement ce qu'il y a entre <!DOCTYPE html> et </html>"""
-    # 1. Enlever les balises markdown
     text = raw_text.replace("```html", "").replace("```", "").strip()
-    
-    # 2. Trouver le début et la fin
     start_marker = "<!DOCTYPE html>"
     end_marker = "</html>"
-    
     start_idx = text.find(start_marker)
     end_idx = text.find(end_marker)
-    
-    # 3. Couper proprement
     if start_idx != -1 and end_idx != -1:
-        # On garde du début du DOCTYPE jusqu'à la fin du </html>
         return text[start_idx : end_idx + len(end_marker)]
-    
-    # Si on ne trouve pas les balises (rare), on renvoie le texte nettoyé du markdown
     return text
 
-# --- MOTEUR DE RECHERCHE (V7 Logic) ---
+# --- MOTEUR DE RECHERCHE (V7) ---
 def smart_search(job, city, api_key, max_pages):
     all_results = []
     seen = set()
     status_box = st.empty()
-    
-    status_box.info(f"📍 Scan initial de {city}...")
+    status_box.info(f"📍 Scan de {city}...")
     
     try:
-        params = {
-            "engine": "google_maps",
-            "q": f"{job} {city}",
-            "type": "search",
-            "google_domain": "google.fr",
-            "hl": "fr",
-            "num": 20,
-            "api_key": api_key
-        }
+        params = {"engine": "google_maps", "q": f"{job} {city}", "type": "search", "google_domain": "google.fr", "hl": "fr", "num": 20, "api_key": api_key}
         search = GoogleSearch(params)
         data = search.get_dict()
-        
         results = data.get("local_results", [])
         for res in results:
             pid = res.get("place_id")
@@ -72,19 +52,16 @@ def smart_search(job, city, api_key, max_pages):
                 all_results.append(res)
                 seen.add(pid)
 
-        # Tentative Pagination
+        # Pagination simple
         ll_token = None
         try:
-            metadata = data.get("search_metadata", {})
-            url = metadata.get("google_maps_url", "")
+            url = data.get("search_metadata", {}).get("google_maps_url", "")
             match = re.search(r'@([-0-9.]+),([-0-9.]+),([0-9.]+)z', url)
-            if match:
-                ll_token = f"@{match.group(1)},{match.group(2)},{match.group(3)}z"
+            if match: ll_token = f"@{match.group(1)},{match.group(2)},{match.group(3)}z"
         except: pass
 
         if ll_token and max_pages > 1:
             for page in range(1, max_pages):
-                status_box.info(f"🔄 Extension du scan (Page {page+1})...")
                 try:
                     params["start"] = page * 20
                     params["ll"] = ll_token
@@ -98,39 +75,60 @@ def smart_search(job, city, api_key, max_pages):
                             seen.add(pid)
                     time.sleep(1)
                 except: break
-        
-    except Exception as e:
-        st.error(f"Erreur de recherche : {e}")
+    except Exception as e: st.error(f"Erreur: {e}")
 
-    status_box.success(f"✅ Terminé : {len(all_results)} entreprises analysées.")
+    status_box.success(f"✅ {len(all_results)} résultats.")
     time.sleep(2)
     status_box.empty()
     return all_results
 
 # --- GENERATEURS ---
 def generate_code(name, job, city, addr, tel):
-    prompt = f"Code HTML One-Page (TailwindCSS) pour {name} ({job}) à {city}. Adresse: {addr}, Tel: {tel}. Commence par <!DOCTYPE html>."
+    # On force l'IA à mettre un formulaire générique au début
+    prompt = f"""
+    Crée un site One-Page HTML (TailwindCSS) pour {name} ({job}) à {city}. Adresse: {addr}, Tel: {tel}.
+    
+    IMPORTANT POUR LE FORMULAIRE DE CONTACT :
+    Utilise EXACTEMENT cette balise pour le formulaire :
+    <form action="https://formsubmit.co/votre-email@gmail.com" method="POST" class="space-y-4">
+    
+    Structure: Navbar, Hero, Services, Contact. Commence par <!DOCTYPE html>.
+    """
     try:
         resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
-        # On passe le résultat dans la cisaille
         return clean_html_output(resp.choices[0].message.content)
     except: return "<!-- Erreur Gen -->"
 
 def modify_code(html, ins):
     try:
         resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": f"Modifie ce HTML: {ins}. Renvoie tout le code HTML complet."}])
-        # On passe le résultat dans la cisaille
         return clean_html_output(resp.choices[0].message.content)
     except: return html
 
-def generate_email(name):
+def configure_form(html_content, client_email):
+    """Fonction Python (pas IA) pour changer l'email du formulaire à coup sûr"""
+    # Regex pour trouver l'action du formulaire et la remplacer
+    pattern = r'action="https://formsubmit.co/[^"]*"'
+    replacement = f'action="https://formsubmit.co/{client_email}"'
+    
+    # On ajoute aussi un champ caché pour désactiver le captcha si besoin
+    hidden_field = '<input type="hidden" name="_captcha" value="false">'
+    
+    new_html = re.sub(pattern, replacement, html_content)
+    
+    # Petite astuce : on s'assure que le formulaire est en POST
+    new_html = new_html.replace('method="get"', 'method="POST"').replace('method="GET"', 'method="POST"')
+    
+    return new_html
+
+def generate_email_prospection(name):
     try:
         resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": f"Email prospection court AIDA pour {name}."}])
         return resp.choices[0].message.content
     except: return "Erreur Email"
 
 # --- INTERFACE ---
-st.title("LocalHunter V8 (Clean Output)")
+st.title("LocalHunter V9 (Formulaires)")
 
 tab1, tab2 = st.tabs(["CHASSE", "ATELIER"])
 
@@ -165,23 +163,47 @@ with tab1:
                     if st.button("⚡ Site", key=f"g_{pid}"):
                         st.session_state[f"h_{pid}"] = generate_code(p.get('title'), job, city, p.get('address'), p.get('phone'))
                     if st.button("📧 Email", key=f"m_{pid}"):
-                        st.session_state[f"e_{pid}"] = generate_email(p.get('title'))
+                        st.session_state[f"e_{pid}"] = generate_email_prospection(p.get('title'))
                 
                 with c_b:
                     if f"h_{pid}" in st.session_state:
-                        st.text("👇 Code HTML propre (Copiable)")
+                        st.text("Code prêt (Email formulaire par défaut: votre-email@gmail.com)")
                         st.code(st.session_state[f"h_{pid}"], language="html")
-                        with st.expander("Voir"): st.components.v1.html(st.session_state[f"h_{pid}"], height=300, scrolling=True)
                     if f"e_{pid}" in st.session_state:
                         st.text_area("Mail", st.session_state[f"e_{pid}"])
 
 with tab2:
-    up = st.file_uploader("Modifier HTML", type=['html'])
+    st.header("🔧 Configuration Finale (Avant livraison)")
+    up = st.file_uploader("1. Charger le fichier HTML du site vendu", type=['html'])
+    
     if up:
-        h = up.getvalue().decode("utf-8")
-        st.components.v1.html(h, height=200, scrolling=True)
-        ins = st.text_input("Modif:")
-        if st.button("Appliquer"):
-            st.session_state['new'] = modify_code(h, ins)
-            st.rerun()
-    if 'new' in st.session_state: st.code(st.session_state['new'], language="html")
+        html = up.getvalue().decode("utf-8")
+        st.success("Fichier chargé.")
+        
+        c_edit1, c_edit2 = st.columns(2)
+        
+        with c_edit1:
+            st.subheader("A. Retouche Design (IA)")
+            ins = st.text_input("Ex: Change le fond en bleu nuit")
+            if st.button("Appliquer Design"):
+                with st.spinner("Retouche..."):
+                    st.session_state['new'] = modify_code(html, ins)
+                    st.rerun()
+
+        with c_edit2:
+            st.subheader("B. Activer Formulaire (Python)")
+            client_email = st.text_input("Email du client (pour recevoir les messages)", placeholder="boulangerie@orange.fr")
+            if st.button("Configurer Email"):
+                if client_email and "@" in client_email:
+                    st.session_state['new'] = configure_form(html, client_email)
+                    st.success(f"✅ Formulaire configuré vers {client_email} !")
+                    st.rerun()
+                else:
+                    st.error("Email invalide")
+
+    if 'new' in st.session_state:
+        st.divider()
+        st.success("🎉 VERSION FINALE PRÊTE À UPLOADER SUR O2SWITCH")
+        st.code(st.session_state['new'], language="html")
+        with st.expander("Voir résultat"):
+            st.components.v1.html(st.session_state['new'], height=400, scrolling=True)
