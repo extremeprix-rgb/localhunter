@@ -37,40 +37,52 @@ def clean_html_output(raw_text):
 
 def image_to_base64(uploaded_file):
     """Transforme une image en chaîne de caractères pour l'incruster dans le HTML"""
-    bytes_data = uploaded_file.getvalue()
-    b64_str = base64.b64encode(bytes_data).decode()
-    # On devine le mime type (jpg/png)
-    mime = "image/png" if uploaded_file.name.endswith(".png") else "image/jpeg"
-    return f"data:{mime};base64,{b64_str}"
+    if uploaded_file is None: return None
+    try:
+        bytes_data = uploaded_file.getvalue()
+        b64_str = base64.b64encode(bytes_data).decode()
+        # On devine le mime type (jpg/png)
+        mime = "image/png" if uploaded_file.name.lower().endswith(".png") else "image/jpeg"
+        return f"data:{mime};base64,{b64_str}"
+    except Exception as e:
+        st.error(f"Erreur conversion image: {e}")
+        return None
 
 def get_images_from_html(html_content):
     """Trouve toutes les URLs d'images dans le code pour créer le menu déroulant"""
-    # Cherche src="..." ou src='...'
+    # Pattern robuste qui cherche src="..." ou src='...' à travers tout le document
     pattern = r'<img[^>]+src=["\']([^"\']*)["\']'
-    return [m.group(1) for m in re.finditer(pattern, html_content)]
+    return [m.group(1) for m in re.finditer(pattern, html_content, re.IGNORECASE)]
 
 def replace_specific_image(html_content, image_data, index):
     """Remplace une image spécifique (par son index) par la version Base64"""
+    # Regex qui capture tout le tag img, avec le src au milieu
+    # Group 1: <img ... src="
+    # Group 2: L'URL actuelle
+    # Group 3: " ... >
     pattern = r'(<img[^>]+src=["\'])([^"\']*)(["\'][^>]*>)'
-    matches = list(re.finditer(pattern, html_content))
+    matches = list(re.finditer(pattern, html_content, re.IGNORECASE))
     
     if 0 <= index < len(matches):
         m = matches[index]
         start = m.start()
         end = m.end()
+        
+        # On reconstruit le tag avec la nouvelle data Base64
         new_tag = f"{m.group(1)}{image_data}{m.group(3)}"
+        
+        # On découpe la string originale pour insérer le nouveau tag
         return html_content[:start] + new_tag + html_content[end:]
+    
     return html_content
 
 def surgical_email_config(html_content, email):
-    # Cherche action="..."
     pattern = r'action=["\']https://formsubmit\.co/[^"\']*["\']'
     replacement = f'action="https://formsubmit.co/{email}"'
     
     if re.search(pattern, html_content):
         return re.sub(pattern, replacement, html_content)
     else:
-        # Si pas d'attribut action, on essaie de l'injecter dans la balise form
         return html_content.replace('<form', f'<form action="https://formsubmit.co/{email}"')
 
 # --- SEARCH & GEN ---
@@ -114,27 +126,32 @@ def smart_search(job, city, api_key, max_pages):
     return all_results
 
 def generate_code(name, job, city, addr, tel):
-    # Prompt renforcé pour avoir des IMAGES partout (pas d'emojis)
+    # Génération d'un timestamp pour rendre les URLs uniques et éviter le cache
+    ts = int(time.time())
+    
     prompt = f"""
     Crée un site One-Page HTML (TailwindCSS) COMPLET pour {name} ({job}) à {city}.
     Infos: Adresse: {addr}, Tel: {tel}.
     
-    IMAGES OBLIGATOIRES (Utilise des balises <img> pour TOUT, pas d'emojis, pour qu'on puisse les remplacer):
-    1. Hero: "https://loremflickr.com/1200/800/{job.replace(' ', ',')}?random=1"
-    2. Section Histoire (Image Droite): "https://loremflickr.com/800/600/{job.replace(' ', ',')}?random=2"
-    3. Services (3 cartes): Utilise src="https://placehold.co/100x100?text=Service" pour les icones.
+    INSTRUCTION CRITIQUE IMAGES :
+    Tu dois insérer 5 balises <img>. Utilise UNIQUEMENT ces URLs LoremFlickr qui correspondent au métier "{job}".
+    1. Header/Hero : src="https://loremflickr.com/1200/800/{job.replace(' ', ',')}?lock=1"
+    2. Section "Notre Histoire" : src="https://loremflickr.com/800/600/{job.replace(' ', ',')}?lock=2"
+    3. Service 1 (Carte) : src="https://loremflickr.com/400/300/{job.replace(' ', ',')}?lock=3"
+    4. Service 2 (Carte) : src="https://loremflickr.com/400/300/{job.replace(' ', ',')}?lock=4"
+    5. Service 3 (Carte) : src="https://loremflickr.com/400/300/{job.replace(' ', ',')}?lock=5"
     
-    STRUCTURE REQUISE :
-    1. Navbar (Logo + Tel)
-    2. Hero Section (Grand titre, appel à l'action, image de fond)
-    3. Section "Notre Histoire" : Texte de présentation + Photo à droite.
-    4. Section Services (3 cartes avec images carrées)
-    5. Section Témoignages (2 avis clients)
-    6. Contact : Formulaire <form action="https://formsubmit.co/votre-email@gmail.com" method="POST">
+    STRUCTURE :
+    - Navbar (Logo + Tel)
+    - Hero Section (Grand titre, CTA, image background ou img absolute)
+    - Section "Notre Histoire" : Texte de présentation + Photo à droite.
+    - Section Services : 3 cartes alignées avec photo au dessus et texte dessous.
+    - Section Témoignages
+    - Contact : Formulaire <form action="https://formsubmit.co/votre-email@gmail.com" method="POST">
     
     TECHNIQUE :
     - Commence par <!DOCTYPE html>
-    - Ajoute onerror="this.src='https://placehold.co/600x400'" sur TOUTES les balises <img>.
+    - Ajoute class="object-cover" pour les images.
     """
     try:
         resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
@@ -194,11 +211,11 @@ with tab1:
 with tab2:
     st.header("🔧 Customisation Pro")
     
-    # Gestion du chargement de fichier sans écraser les modifs
-    up_html = st.file_uploader("1. Charger le fichier HTML", type=['html'])
+    # Gestion du chargement de fichier
+    up_html = st.file_uploader("1. Charger le fichier HTML (Optionnel si généré)", type=['html'])
     
     if up_html:
-        # On calcule un hash pour savoir si c'est un NOUVEAU fichier
+        # On ne remplace que si c'est un nouveau fichier
         file_hash = hashlib.md5(up_html.getvalue()).hexdigest()
         if 'current_file_hash' not in st.session_state or st.session_state['current_file_hash'] != file_hash:
             st.session_state['final'] = up_html.getvalue().decode("utf-8")
@@ -209,23 +226,23 @@ with tab2:
     if 'final' in st.session_state:
         current_html = st.session_state['final']
         
-        # --- BLOC 1 : MODIFICATION TEXTE (NOUVEAU) ---
+        # --- BLOC 1 : MODIFICATION TEXTE ---
         with st.expander("✏️ Éditer le texte / Code HTML", expanded=False):
-            st.warning("Attention : Modifiez le texte ici. Ne touchez pas aux balises si vous ne connaissez pas.")
+            st.warning("Zone expert : Modifiez le texte entre les balises > et <.")
             edited_html = st.text_area("Code Source", value=current_html, height=300)
-            if st.button("Sauvegarder les modifications texte"):
+            if st.button("Sauvegarder Texte"):
                 st.session_state['final'] = edited_html
                 st.success("Texte mis à jour !")
                 st.rerun()
 
-        # Recharger current_html au cas où on vient de sauvegarder
+        # Refresh
         current_html = st.session_state['final']
 
         col_img, col_mail = st.columns(2)
         
-        # --- BLOC 2 : IMAGES ---
+        # --- BLOC 2 : IMAGES (FIXED) ---
         with col_img:
-            st.subheader("🖼️ Gestion des Images")
+            st.subheader("🖼️ Remplacer une image")
             images_found = get_images_from_html(current_html)
             
             if not images_found:
@@ -233,22 +250,26 @@ with tab2:
             else:
                 st.info(f"{len(images_found)} images détectées.")
                 
-                # Menu déroulant
+                # Menu déroulant explicite
                 img_options = {i: f"Image #{i+1} : {url[:30]}..." for i, url in enumerate(images_found)}
                 selected_index = st.selectbox(
-                    "Quelle image remplacer ?", 
+                    "Sélectionnez l'image à remplacer :", 
                     options=list(img_options.keys()),
                     format_func=lambda x: img_options[x]
                 )
                 
-                up_img = st.file_uploader("Nouvelle photo", type=['jpg', 'png', 'jpeg'], key="img_uploader")
+                # On utilise une key unique pour l'uploader pour éviter les conflits
+                up_img = st.file_uploader("Nouvelle photo (JPG/PNG)", type=['jpg', 'png', 'jpeg'], key=f"img_uploader_{selected_index}")
                 
                 if up_img and st.button("Fusionner cette image"):
                     b64_img = image_to_base64(up_img)
-                    new_html = replace_specific_image(current_html, b64_img, selected_index)
-                    st.session_state['final'] = new_html
-                    st.success(f"Image #{selected_index+1} remplacée !")
-                    st.rerun()
+                    if b64_img:
+                        new_html = replace_specific_image(current_html, b64_img, selected_index)
+                        st.session_state['final'] = new_html
+                        st.success(f"✅ Image #{selected_index+1} remplacée avec succès !")
+                        st.rerun() # CRUCIAL pour mettre à jour l'aperçu et le download
+                    else:
+                        st.error("Erreur lors du traitement de l'image.")
 
         # --- BLOC 3 : EMAIL ---
         with col_mail:
@@ -261,19 +282,21 @@ with tab2:
                     st.success("Email configuré !")
                     st.rerun()
 
-        # --- APERÇU ---
+        # --- APERÇU & DOWNLOAD (FIXED) ---
         st.divider()
-        st.markdown("### ⬇️ Téléchargement & Aperçu")
+        st.markdown("### ⬇️ RÉSULTAT FINAL")
         
+        # Le bouton est généré avec le contenu ACTUEL de la session
         st.download_button(
-            "💾 Télécharger index.html", 
-            st.session_state['final'],
+            label="💾 TÉLÉCHARGER LE SITE (index.html)", 
+            data=st.session_state['final'],
             file_name="index.html",
             mime="text/html",
             use_container_width=True
         )
         
+        st.markdown("### 👁️ Aperçu")
         st.components.v1.html(st.session_state['final'], height=800, scrolling=True)
     
     else:
-        st.info("👈 Chargez un fichier ou générez un site dans l'onglet CHASSE pour commencer.")
+        st.info("👈 Commencez par scanner et générer un site dans l'onglet CHASSE.")
