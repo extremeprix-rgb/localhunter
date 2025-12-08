@@ -2,14 +2,17 @@ import streamlit as st
 import openai
 from serpapi import GoogleSearch
 import resend
+import time
 
-st.set_page_config(page_title="LocalHunter V4.1", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="LocalHunter V6 (Deep Scan)", page_icon="🏢", layout="wide")
 
-# CSS Style
+# CSS
 st.markdown("""
 <style>
-    div.stButton > button:first-child { background-color: #0f172a; color: white; border-radius: 8px; border: none; font-weight: bold; }
-    div.stButton > button:hover { background-color: #334155; color: white; }
+    div.stButton > button:first-child { background-color: #000000; color: white; border-radius: 6px; font-weight: 600; }
+    .stat-card { background-color: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; text-align: center; }
+    .stat-val { font-size: 24px; font-weight: bold; color: #0f172a; }
+    .stat-lbl { font-size: 12px; color: #64748b; text-transform: uppercase; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -17,103 +20,137 @@ st.markdown("""
 try:
     api_key = st.secrets.get("MISTRAL_KEY", st.secrets.get("OPENAI_KEY"))
     serpapi_key = st.secrets["SERPAPI_KEY"]
-    
     client = openai.OpenAI(api_key=api_key, base_url="https://api.mistral.ai/v1")
-except Exception as e:
-    st.error(f"⚠️ Erreur Config: {e}")
-    st.stop()
+except: st.error("Clés manquantes"); st.stop()
 
-# Fonctions
-def search_google_maps(job, city, api_key):
-    try:
-        params = {"engine": "google_maps", "q": f"{job} {city}", "type": "search", "google_domain": "google.fr", "hl": "fr", "num": 20, "api_key": api_key}
-        search = GoogleSearch(params)
-        return search.get_dict().get("local_results", [])
-    except: return []
+# --- ENGINE ---
+def deep_search_google_maps(job, city, api_key, max_pages=3):
+    """Scanne plusieurs pages de résultats (Pagination)"""
+    all_results = []
+    seen_ids = set() # Pour éviter les doublons
+    
+    # Barre de progression dans l'UI
+    progress_text = "Démarrage du Deep Scan..."
+    my_bar = st.progress(0, text=progress_text)
+    
+    for page in range(max_pages):
+        start_index = page * 20
+        pct = int((page / max_pages) * 100)
+        my_bar.progress(pct, text=f"Scan page {page+1}/{max_pages} (Résultats {start_index}-{start_index+20})...")
+        
+        try:
+            params = {
+                "engine": "google_maps",
+                "q": f"{job} {city}",
+                "type": "search",
+                "google_domain": "google.fr",
+                "hl": "fr",
+                "num": 20, # Max par page
+                "start": start_index, # Pagination
+                "api_key": api_key
+            }
+            search = GoogleSearch(params)
+            results = search.get_dict().get("local_results", [])
+            
+            if not results:
+                break # Plus de résultats, on arrête
+                
+            for res in results:
+                pid = res.get("place_id")
+                if pid not in seen_ids:
+                    all_results.append(res)
+                    seen_ids.add(pid)
+            
+            # Pause respectueuse pour l'API (évite le blocage)
+            time.sleep(0.5)
+            
+        except Exception as e:
+            st.error(f"Erreur Page {page}: {e}")
+            break
+            
+    my_bar.progress(100, text="Scan terminé !")
+    time.sleep(0.5)
+    my_bar.empty()
+    
+    return all_results
 
 def generate_website_code(business_name, activity, city, address, phone):
-    prompt = f"Tu es dév web. Crée un site One-Page HTML complet (TailwindCSS) pour {business_name} ({activity}) à {city}. Adresse: {address}, Tel: {phone}. Structure: Navbar, Hero, Services, Contact. Code HTML UNIQUEMENT."
+    prompt = f"Crée site One-Page HTML (TailwindCSS) pour {business_name} ({activity}) à {city}. Adresse: {address}, Tel: {phone}. Structure: Navbar, Hero, Services, Contact. Code HTML STRICTEMENT SEUL, commence par <!DOCTYPE html>."
     try:
         response = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
         return response.choices[0].message.content.strip().replace("```html", "").replace("```", "")
-    except Exception as e: return f"<h1>Erreur IA: {e}</h1>"
+    except: return "<!-- Erreur IA -->"
 
 def modify_website_code(current_html, instructions):
-    prompt = f"Tu es expert maintenance. Code HTML actuel:\n{current_html[:2000]}...\nInstruction modif: {instructions}\nRenvoie tout le HTML corrigé."
+    prompt = f"Modifie ce HTML selon: '{instructions}'. Renvoie UNIQUEMENT le code HTML complet."
     try:
         response = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
         return response.choices[0].message.content.strip().replace("```html", "").replace("```", "")
-    except Exception as e: return f"Erreur: {e}"
+    except: return current_html
 
 def generate_sales_email(business_name):
-    prompt = f"Email de prospection court pour {business_name} pour lui vendre un site démo déjà fait. Méthode AIDA."
+    prompt = f"Email prospection court AIDA pour vendre site web à {business_name}."
     try:
         response = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
         return response.choices[0].message.content
-    except: return "Erreur email"
+    except: return "Erreur"
 
-# Interface
-st.title("🚀 LocalHunter - Suite Complète")
-tab_hunter, tab_editor = st.tabs(["🔫 Mode Chasseur", "🔧 Atelier de Retouche"])
+# --- UI ---
+st.title("LocalHunter V6 (Deep Scan)")
 
-# --- MODE CHASSEUR ---
-with tab_hunter:
-    c1, c2 = st.columns(2)
-    with c1: job = st.text_input("Activité", "Coiffeur")
-    with c2: city = st.text_input("Ville", "Bordeaux")
-    
-    if st.button("🔎 Scanner"):
-        with st.status("Recherche..."):
-            raw = search_google_maps(job, city, serpapi_key)
-            st.session_state.prospects = [r for r in raw if "website" not in r]
+tab1, tab2 = st.tabs(["CHASSE MASSIVE", "ATELIER"])
 
-    if 'prospects' in st.session_state and st.session_state.prospects:
-        for p in st.session_state.prospects:
-            with st.expander(f"📍 {p.get('title', 'Inconnu')}"):
-                c_act, c_res = st.columns([1, 2])
-                pid = p.get('place_id', 'id')
-                
-                with c_act:
-                    if st.button(f"✨ Générer Site", key=f"gen_{pid}"):
-                        with st.spinner("Création..."):
-                            code = generate_website_code(p.get('title'), job, city, p.get('address'), p.get('phone'))
-                            st.session_state[f"html_{pid}"] = code
-                    
-                    if st.button(f"📧 Email", key=f"mail_{pid}"):
-                        st.session_state[f"email_{pid}"] = generate_sales_email(p.get('title'))
+with tab1:
+    c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
+    with c1: job = st.text_input("Activité", "Maçon")
+    with c2: city = st.text_input("Ville", "Lyon")
+    with c3: pages = st.number_input("Pages à scanner", 1, 5, 3, help="1 page = 20 résultats")
+    with c4: 
+        st.write("")
+        st.write("")
+        btn = st.button("🚀 SCAN", use_container_width=True)
 
-                with c_res:
-                    if f"html_{pid}" in st.session_state:
-                        st.success("✅ Site généré !")
-                        # NOUVELLE MÉTHODE DE TÉLÉCHARGEMENT
-                        st.text("1. Cliquez sur le bouton copier en haut à droite du code.")
-                        st.text("2. Collez dans un fichier 'site.html' sur votre PC.")
-                        st.code(st.session_state[f"html_{pid}"], language="html")
-                        
-                        # Aperçu visuel en dessous
-                        with st.expander("👁️ Voir l'aperçu visuel"):
-                            st.components.v1.html(st.session_state[f"html_{pid}"], height=500, scrolling=True)
-
-                    if f"email_{pid}" in st.session_state:
-                        st.info("📧 Email de vente :")
-                        st.code(st.session_state[f"email_{pid}"], language="markdown")
-
-# --- ATELIER ---
-with tab_editor:
-    uploaded = st.file_uploader("📂 Charger un fichier HTML", type=['html'])
-    if uploaded:
-        html_content = uploaded.getvalue().decode("utf-8")
-        st.components.v1.html(html_content, height=300, scrolling=True)
+    if btn:
+        raw = deep_search_google_maps(job, city, serpapi_key, max_pages=pages)
+        clean = [r for r in raw if "website" not in r]
         
-        instruction = st.text_area("Modifications demandées :")
-        if st.button("🛠️ Appliquer"):
-            with st.spinner("Travail en cours..."):
-                new_html = modify_website_code(html_content, instruction)
-                st.session_state['new_html'] = new_html
-                st.rerun()
-                
-    if 'new_html' in st.session_state:
+        st.session_state.prospects = clean
+        st.session_state.stats = (len(raw), len(raw)-len(clean), len(clean))
+
+    if 'stats' in st.session_state:
+        tot, rej, kep = st.session_state.stats
+        k1, k2, k3 = st.columns(3)
+        k1.markdown(f"<div class='stat-card'><div class='stat-val'>{tot}</div><div class='stat-lbl'>Profils Analysés</div></div>", unsafe_allow_html=True)
+        k2.markdown(f"<div class='stat-card'><div class='stat-val' style='color:orange'>{rej}</div><div class='stat-lbl'>Déjà Numérisés</div></div>", unsafe_allow_html=True)
+        k3.markdown(f"<div class='stat-card'><div class='stat-val' style='color:green'>{kep}</div><div class='stat-lbl'>Prospects Cibles</div></div>", unsafe_allow_html=True)
         st.divider()
-        st.success("✅ Nouvelle version prête ! Copiez le code ci-dessous :")
-        st.code(st.session_state['new_html'], language="html")
-        st.components.v1.html(st.session_state['new_html'], height=500, scrolling=True)
+
+    if 'prospects' in st.session_state:
+        for p in st.session_state.prospects:
+            with st.expander(f"📍 {p.get('title')} ({p.get('address')})"):
+                ac, vi = st.columns([1, 2])
+                pid = p.get('place_id')
+                
+                with ac:
+                    if st.button("⚡ Générer Site", key=f"g_{pid}"):
+                        st.session_state[f"h_{pid}"] = generate_website_code(p.get('title'), job, city, p.get('address'), p.get('phone'))
+                    if st.button("📧 Email", key=f"m_{pid}"):
+                        st.session_state[f"e_{pid}"] = generate_sales_email(p.get('title'))
+                
+                with vi:
+                    if f"h_{pid}" in st.session_state:
+                        st.code(st.session_state[f"h_{pid}"], language="html")
+                        with st.expander("Voir"): st.components.v1.html(st.session_state[f"h_{pid}"], height=300, scrolling=True)
+                    if f"e_{pid}" in st.session_state:
+                        st.text_area("Mail", st.session_state[f"e_{pid}"])
+
+with tab2:
+    up = st.file_uploader("HTML", type=['html'])
+    if up:
+        h = up.getvalue().decode("utf-8")
+        st.components.v1.html(h, height=300, scrolling=True)
+        ins = st.text_input("Modif")
+        if st.button("Appliquer"):
+            st.session_state['new'] = modify_website_code(h, ins)
+            st.rerun()
+    if 'new' in st.session_state: st.code(st.session_state['new'], language="html")
