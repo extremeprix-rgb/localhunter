@@ -9,7 +9,7 @@ import urllib.parse
 import zipfile
 import io
 
-st.set_page_config(page_title="LocalHunter V33 (Multi-Host)", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="LocalHunter V34 (Copy/Paste)", page_icon="📋", layout="wide")
 
 # CSS
 st.markdown("""
@@ -225,7 +225,7 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V33 (Multi-Host)")
+st.title("LocalHunter V34 (Copy/Paste)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -264,7 +264,7 @@ with tab1:
                             st.success("Fait ! Voir Atelier.")
 
                 st.markdown("---")
-                hosted_link = st.text_input("🔗 Lien Hébergé (Vercel / Surge)", key=f"lnk_{p.get('place_id')}")
+                hosted_link = st.text_input("🔗 Lien Hébergé (Static.app / Autre)", key=f"lnk_{p.get('place_id')}")
 
                 t_email, t_sms, t_script = st.tabs(["📧 Email", "📱 SMS", "📞 Téléphone"])
                 
@@ -292,23 +292,22 @@ with tab2:
     st.header("🔧 Atelier & Publication")
     
     if st.session_state.final:
-        st.markdown("### 🌐 HÉBERGEMENT (PLAN DE SECOURS)")
+        st.markdown("### 🌐 ALTERNATIVES HÉBERGEMENT")
+        st.info("Static.app accepte les ZIP. Si ça échoue, vous pouvez aussi copier le code et utiliser CodePen.io pour une démo.")
         
         c1, c2 = st.columns(2)
         with c1:
             st.download_button("💾 1. Télécharger index.html", st.session_state.final, "index.html", "text/html", use_container_width=True)
-            st.info("Testez ce fichier sur votre PC. Il doit s'ouvrir.")
+            # Bouton de copie du code brut
+            st.text_area("Ou copier le code brut :", st.session_state.final, height=100)
             
         with c2:
-            st.markdown("**Où l'héberger si Tiiny bloque ?**")
-            st.link_button("1. Essayez Vercel (Gratuit)", "https://vercel.com/new", use_container_width=True)
-            st.link_button("2. Essayez Static.app (Gratuit)", "https://static.app", use_container_width=True)
-            st.link_button("3. Essayez Surge.sh (Pro)", "https://surge.sh", use_container_width=True)
+            st.link_button("🚀 Static.app (Upload ZIP)", "https://static.app", use_container_width=True)
+            st.link_button("⚡ Surge.sh (Pro)", "https://surge.sh", use_container_width=True)
             
-        st.markdown("---")
-        # BOUTON ZIP DE SECOURS
+        # BOUTON ZIP (Corrigé V29)
         zip_data = create_zip_archive(st.session_state.final)
-        st.download_button(label="📦 Télécharger en ZIP (Pour Netlify/Vercel)", data=zip_data, file_name="site_web.zip", mime="application/zip", use_container_width=True)
+        st.download_button(label="📦 Télécharger le ZIP (Pour Static.app)", data=zip_data, file_name="site_web.zip", mime="application/zip", use_container_width=True)
         st.divider()
 
     up_html = st.file_uploader("Charger HTML", type=['html'])
