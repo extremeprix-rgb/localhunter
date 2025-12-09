@@ -7,7 +7,7 @@ import base64
 import hashlib
 import urllib.parse
 
-st.set_page_config(page_title="LocalHunter V23 (Free Hosting)", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="LocalHunter V24 (Netlify Drop)", page_icon="⚡", layout="wide")
 
 # CSS
 st.markdown("""
@@ -16,9 +16,18 @@ st.markdown("""
     .badge-none { background-color: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #ef4444; }
     .badge-weak { background-color: #ffedd5; color: #9a3412; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #f97316; }
     .badge-ok { background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; }
-    .step-box { background-color: #f8fafc; border: 1px dashed #94a3b8; padding: 15px; border-radius: 8px; margin: 10px 0; }
-    a.host-btn { display: inline-block; background-color: #10b981; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 10px; margin-right: 10px;}
-    a.host-btn:hover { background-color: #059669; }
+    .step-box { background-color: #f0fdf4; border: 1px solid #22c55e; padding: 20px; border-radius: 10px; margin: 15px 0; }
+    .btn-link { 
+        display: inline-block; 
+        background-color: #2563eb; 
+        color: white !important; 
+        padding: 10px 20px; 
+        border-radius: 8px; 
+        text-decoration: none; 
+        font-weight: bold; 
+        margin-top: 10px;
+    }
+    .btn-link:hover { background-color: #1d4ed8; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -201,11 +210,11 @@ def generate_prospection_content(name, type_content, link_url):
     
     try:
         resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
-        return resp.choices[0].message.content.replace('"', '') # Clean quotes
+        return resp.choices[0].message.content.replace('"', '') 
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V23 (Free Hosting)")
+st.title("LocalHunter V24 (Netlify Drop)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -245,7 +254,7 @@ with tab1:
                 st.markdown("---")
                 
                 # Input Lien Unique
-                hosted_link = st.text_input("🔗 Lien Hébergé (Static.app)", key=f"lnk_{p.get('place_id')}")
+                hosted_link = st.text_input("🔗 Lien Hébergé (Netlify/Static)", key=f"lnk_{p.get('place_id')}")
 
                 t_email, t_sms, t_script = st.tabs(["📧 Email", "📱 SMS", "📞 Téléphone"])
                 
@@ -275,11 +284,15 @@ with tab2:
     if 'final' in st.session_state:
         st.markdown("""
         <div class="step-box">
-            <b>🚀 ÉTAPE 1 : HÉBERGEMENT GRATUIT (Alternative Tiiny)</b><br>
-            1. Téléchargez le fichier HTML.<br>
-            2. Ouvrez <a href="https://static.app" target="_blank" class="host-btn">STATIC.APP ↗</a> (Meilleure alternative gratuite).<br>
-            3. Si ça bloque, essayez <a href="https://surge.sh" target="_blank" class="host-btn">Surge.sh ↗</a> (Ligne de commande).<br>
-            4. Copiez le lien, revenez dans CHASSE et collez-le pour générer le SMS.
+            <h3>🌐 HÉBERGEMENT GRATUIT (100% FIABLE)</h3>
+            <p>La meilleure méthode est d'utiliser <b>Netlify Drop</b>. C'est le standard pro gratuit.</p>
+            <ol>
+                <li>Téléchargez votre fichier <code>index.html</code> via le bouton ci-dessous.</li>
+                <li>Cliquez sur le bouton bleu pour ouvrir Netlify Drop.</li>
+                <li><b>Glissez simplement le fichier index.html</b> dans la zone encadrée sur leur site.</li>
+                <li>Copiez le lien qu'ils vous donnent (ex: <i>jolly-site.netlify.app</i>).</li>
+            </ol>
+            <a href="https://app.netlify.com/drop" target="_blank" class="btn-link">OUVRIR NETLIFY DROP ↗</a>
         </div>
         """, unsafe_allow_html=True)
         
