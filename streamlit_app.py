@@ -9,7 +9,7 @@ import urllib.parse
 import zipfile
 import io
 
-st.set_page_config(page_title="LocalHunter V34 (Copy/Paste)", page_icon="📋", layout="wide")
+st.set_page_config(page_title="LocalHunter V35 (Gist Hosting)", page_icon="🛡️", layout="wide")
 
 # CSS
 st.markdown("""
@@ -18,7 +18,8 @@ st.markdown("""
     .badge-none { background-color: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #ef4444; }
     .badge-weak { background-color: #ffedd5; color: #9a3412; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #f97316; }
     .badge-ok { background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; }
-    .step-box { background-color: #f3f4f6; border: 1px solid #d1d5db; padding: 20px; border-radius: 10px; margin: 15px 0; }
+    .step-box { background-color: #f0fdf4; border: 1px solid #16a34a; padding: 20px; border-radius: 10px; margin: 15px 0; }
+    .gist-link { font-family: monospace; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -55,7 +56,6 @@ def clean_html_output(raw_text):
     return text
 
 def create_zip_archive(html_content):
-    """Crée un ZIP standard"""
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         info = zipfile.ZipInfo("index.html")
@@ -225,7 +225,7 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V34 (Copy/Paste)")
+st.title("LocalHunter V35 (Gist Hosting)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -264,7 +264,7 @@ with tab1:
                             st.success("Fait ! Voir Atelier.")
 
                 st.markdown("---")
-                hosted_link = st.text_input("🔗 Lien Hébergé (Static.app / Autre)", key=f"lnk_{p.get('place_id')}")
+                hosted_link = st.text_input("🔗 Lien Gist/Site", key=f"lnk_{p.get('place_id')}")
 
                 t_email, t_sms, t_script = st.tabs(["📧 Email", "📱 SMS", "📞 Téléphone"])
                 
@@ -292,22 +292,28 @@ with tab2:
     st.header("🔧 Atelier & Publication")
     
     if st.session_state.final:
-        st.markdown("### 🌐 ALTERNATIVES HÉBERGEMENT")
-        st.info("Static.app accepte les ZIP. Si ça échoue, vous pouvez aussi copier le code et utiliser CodePen.io pour une démo.")
+        st.markdown("""
+        <div class="step-box">
+            <h3>🛡️ HÉBERGEMENT INFAILLIBLE (GITHUB GIST)</h3>
+            <p>Cette méthode marche TOUJOURS (car GitHub ne bannit pas).</p>
+            <ol>
+                <li>Copiez le code HTML ci-dessous (Bouton en haut à droite de la boite noire).</li>
+                <li>Allez sur <a href="https://gist.github.com" target="_blank"><b>gist.github.com</b></a>.</li>
+                <li>Collez le code. Nommez le fichier <code>index.html</code>. Cliquez sur <b>Create public gist</b>.</li>
+                <li>Cliquez sur le bouton <b>"Raw"</b> sur votre Gist.</li>
+                <li>Copiez l'URL de cette page brute.</li>
+                <li>Allez sur <a href="https://raw.githack.com" target="_blank"><b>raw.githack.com</b></a>, collez l'URL "Raw" et prenez le lien de production.</li>
+            </ol>
+        </div>
+        """, unsafe_allow_html=True)
         
         c1, c2 = st.columns(2)
         with c1:
-            st.download_button("💾 1. Télécharger index.html", st.session_state.final, "index.html", "text/html", use_container_width=True)
-            # Bouton de copie du code brut
-            st.text_area("Ou copier le code brut :", st.session_state.final, height=100)
-            
+            st.download_button("💾 Télécharger index.html", st.session_state.final, "index.html", "text/html", use_container_width=True)
         with c2:
-            st.link_button("🚀 Static.app (Upload ZIP)", "https://static.app", use_container_width=True)
-            st.link_button("⚡ Surge.sh (Pro)", "https://surge.sh", use_container_width=True)
+            st.link_button("🚀 Ouvrir GitHub Gist", "https://gist.github.com", use_container_width=True)
             
-        # BOUTON ZIP (Corrigé V29)
-        zip_data = create_zip_archive(st.session_state.final)
-        st.download_button(label="📦 Télécharger le ZIP (Pour Static.app)", data=zip_data, file_name="site_web.zip", mime="application/zip", use_container_width=True)
+        st.text_area("Code HTML à copier :", st.session_state.final, height=200)
         st.divider()
 
     up_html = st.file_uploader("Charger HTML", type=['html'])
