@@ -6,10 +6,8 @@ import re
 import base64
 import hashlib
 import urllib.parse
-import zipfile
-import io
 
-st.set_page_config(page_title="LocalHunter V31 (MIME & Perms Fix)", page_icon="🌐", layout="wide")
+st.set_page_config(page_title="LocalHunter V32 (Simple Hosting)", page_icon="🚀", layout="wide")
 
 # CSS
 st.markdown("""
@@ -18,7 +16,7 @@ st.markdown("""
     .badge-none { background-color: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #ef4444; }
     .badge-weak { background-color: #ffedd5; color: #9a3412; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #f97316; }
     .badge-ok { background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; }
-    .step-box { background-color: #f0f9ff; border: 2px solid #0ea5e9; padding: 20px; border-radius: 10px; margin: 15px 0; }
+    .step-box { background-color: #f3f4f6; border: 1px solid #d1d5db; padding: 20px; border-radius: 10px; margin: 15px 0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -44,33 +42,15 @@ if 'final' not in st.session_state:
 # --- FONCTIONS TECHNIQUES ---
 
 def clean_html_output(raw_text):
-    # Nettoyage brutal des balises Markdown
     text = raw_text.replace("```html", "").replace("```", "").strip()
-    
-    # Force DOCTYPE au tout début (Crucial pour l'affichage navigateur)
     if "<!DOCTYPE html>" not in text[:50].upper():
         text = "<!DOCTYPE html>\n" + text
-    
-    # Force UTF-8 Meta
     if "charset=" not in text.lower():
         text = text.replace("<head>", '<head>\n<meta charset="UTF-8">', 1)
-        
+    start = text.find("<!DOCTYPE html>")
+    end = text.find("</html>")
+    if start != -1 and end != -1: return text[start : end + 7]
     return text
-
-def create_zip_archive(html_content):
-    """Crée un ZIP avec permissions UNIX 644 pour forcer Netlify à lire le HTML"""
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        info = zipfile.ZipInfo("index.html")
-        info.date_time = time.localtime(time.time())[:6]
-        info.compress_type = zipfile.ZIP_DEFLATED
-        
-        # PERMISSION FIX : 0o100644 (Fichier régulier, Lecture/Ecriture propriétaire, Lecture groupe/autres)
-        # Cela dit à Netlify "Ceci est un fichier web valide"
-        info.external_attr = 0o100644 << 16 
-        
-        zip_file.writestr(info, html_content.encode('utf-8'))
-    return zip_buffer.getvalue()
 
 def image_to_base64(uploaded_file):
     if uploaded_file is None: return None
@@ -233,7 +213,7 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V31 (MIME & Perms Fix)")
+st.title("LocalHunter V32 (Simple Hosting)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -272,7 +252,7 @@ with tab1:
                             st.success("Fait ! Voir Atelier.")
 
                 st.markdown("---")
-                hosted_link = st.text_input("🔗 Lien Hébergé (Netlify)", key=f"lnk_{p.get('place_id')}")
+                hosted_link = st.text_input("🔗 Lien Hébergé (Tiiny / Static / Autre)", key=f"lnk_{p.get('place_id')}")
 
                 t_email, t_sms, t_script = st.tabs(["📧 Email", "📱 SMS", "📞 Téléphone"])
                 
@@ -300,24 +280,16 @@ with tab2:
     st.header("🔧 Atelier & Publication")
     
     if st.session_state.final:
-        st.markdown("### 🌐 HÉBERGEMENT GRATUIT")
-        st.info("1. Téléchargez le ZIP ci-dessous.\n2. Cliquez sur 'OUVRIR NETLIFY'.\n3. Glissez le fichier ZIP sur la page qui s'ouvre.")
+        st.markdown("### 🌐 HÉBERGEMENT (ALTERNATIVE)")
+        st.markdown("Si Netlify/Zip ne marche pas, utilisez **Tiiny.host** (Méthode simple) :")
         
-        # BOUTON ZIP MAGIQUE
-        zip_data = create_zip_archive(st.session_state.final)
-        c_dl, c_link = st.columns([1, 1])
-        
-        with c_dl:
-            st.download_button(
-                label="📦 1. TÉLÉCHARGER LE ZIP",
-                data=zip_data,
-                file_name="site_web.zip",
-                mime="application/zip",
-                use_container_width=True
-            )
-        with c_link:
-            st.link_button("🚀 2. OUVRIR NETLIFY DROP", "https://app.netlify.com/drop", use_container_width=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.download_button("💾 1. Télécharger index.html", st.session_state.final, "index.html", "text/html", use_container_width=True)
+        with c2:
+            st.link_button("🚀 2. Ouvrir Tiiny.host", "https://tiiny.host", use_container_width=True)
             
+        st.info("💡 Sur Tiiny.host : Glissez simplement le fichier `index.html` téléchargé. C'est tout.")
         st.divider()
 
     up_html = st.file_uploader("Charger HTML", type=['html'])
