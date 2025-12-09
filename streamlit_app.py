@@ -9,7 +9,7 @@ import urllib.parse
 import zipfile
 import io
 
-st.set_page_config(page_title="LocalHunter V27 (Zip Export)", page_icon="📦", layout="wide")
+st.set_page_config(page_title="LocalHunter V28 (MIME Fix)", page_icon="🌐", layout="wide")
 
 # CSS
 st.markdown("""
@@ -18,7 +18,7 @@ st.markdown("""
     .badge-none { background-color: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #ef4444; }
     .badge-weak { background-color: #ffedd5; color: #9a3412; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #f97316; }
     .badge-ok { background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; }
-    .step-box { background-color: #e0f2fe; border: 1px solid #0284c7; padding: 20px; border-radius: 10px; margin: 15px 0; }
+    .step-box { background-color: #fefce8; border: 1px solid #eab308; padding: 20px; border-radius: 10px; margin: 15px 0; }
     .btn-link { 
         display: inline-block; 
         background-color: #0284c7; 
@@ -29,7 +29,6 @@ st.markdown("""
         font-weight: bold; 
         margin-top: 10px;
     }
-    .btn-link:hover { background-color: #0369a1; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -56,6 +55,10 @@ if 'final' not in st.session_state:
 
 def clean_html_output(raw_text):
     text = raw_text.replace("```html", "").replace("```", "").strip()
+    # Force UTF-8 Meta if missing
+    if "<meta charset=" not in text:
+        text = text.replace("<head>", '<head>\n<meta charset="UTF-8">')
+    
     start = text.find("<!DOCTYPE html>")
     end = text.find("</html>")
     if start != -1 and end != -1: return text[start : end + 7]
@@ -65,7 +68,8 @@ def create_zip_archive(html_content):
     """Crée un ZIP contenant index.html à la racine pour Netlify"""
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        zip_file.writestr("index.html", html_content)
+        # Important : on encode en utf-8 pour éviter les erreurs de caractères
+        zip_file.writestr("index.html", html_content.encode('utf-8'))
     return zip_buffer.getvalue()
 
 def image_to_base64(uploaded_file):
@@ -229,7 +233,7 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V27 (Zip Export)")
+st.title("LocalHunter V28 (MIME Fix)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -299,16 +303,16 @@ with tab2:
         st.markdown("""
         <div class="step-box">
             <h3>🌐 HÉBERGEMENT GARANTI (ZIP)</h3>
+            <p>Le ZIP force le navigateur à comprendre que c'est un site web et non du texte.</p>
             <ol>
                 <li>Téléchargez le <b>DOSSIER ZIP</b> ci-dessous.</li>
                 <li>Ouvrez <a href="https://app.netlify.com/drop" target="_blank" class="btn-link">NETLIFY DROP ↗</a></li>
                 <li><b>Glissez le fichier ZIP</b> directement sur leur site.</li>
-                <li>Ça marchera à 100% car le fichier s'appelle bien index.html à l'intérieur.</li>
             </ol>
         </div>
         """, unsafe_allow_html=True)
         
-        # BOUTON ZIP MAGIQUE
+        # BOUTON ZIP MAGIQUE (UTF-8 FORCED)
         zip_data = create_zip_archive(st.session_state.final)
         st.download_button(
             label="📦 TÉLÉCHARGER LE DOSSIER ZIP (Recommandé)",
@@ -317,7 +321,6 @@ with tab2:
             mime="application/zip",
             use_container_width=True
         )
-        st.download_button("📄 Télécharger seulement index.html", st.session_state.final, "index.html", "text/html", use_container_width=True)
         st.divider()
 
     up_html = st.file_uploader("Charger HTML", type=['html'])
