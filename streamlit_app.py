@@ -6,8 +6,10 @@ import re
 import base64
 import hashlib
 import urllib.parse
+import zipfile
+import io
 
-st.set_page_config(page_title="LocalHunter V32 (Simple Hosting)", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="LocalHunter V33 (Multi-Host)", page_icon="🚀", layout="wide")
 
 # CSS
 st.markdown("""
@@ -51,6 +53,16 @@ def clean_html_output(raw_text):
     end = text.find("</html>")
     if start != -1 and end != -1: return text[start : end + 7]
     return text
+
+def create_zip_archive(html_content):
+    """Crée un ZIP standard"""
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        info = zipfile.ZipInfo("index.html")
+        info.date_time = time.localtime(time.time())[:6]
+        info.compress_type = zipfile.ZIP_DEFLATED
+        zip_file.writestr(info, html_content.encode('utf-8'))
+    return zip_buffer.getvalue()
 
 def image_to_base64(uploaded_file):
     if uploaded_file is None: return None
@@ -213,7 +225,7 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V32 (Simple Hosting)")
+st.title("LocalHunter V33 (Multi-Host)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -252,7 +264,7 @@ with tab1:
                             st.success("Fait ! Voir Atelier.")
 
                 st.markdown("---")
-                hosted_link = st.text_input("🔗 Lien Hébergé (Tiiny / Static / Autre)", key=f"lnk_{p.get('place_id')}")
+                hosted_link = st.text_input("🔗 Lien Hébergé (Vercel / Surge)", key=f"lnk_{p.get('place_id')}")
 
                 t_email, t_sms, t_script = st.tabs(["📧 Email", "📱 SMS", "📞 Téléphone"])
                 
@@ -280,16 +292,23 @@ with tab2:
     st.header("🔧 Atelier & Publication")
     
     if st.session_state.final:
-        st.markdown("### 🌐 HÉBERGEMENT (ALTERNATIVE)")
-        st.markdown("Si Netlify/Zip ne marche pas, utilisez **Tiiny.host** (Méthode simple) :")
+        st.markdown("### 🌐 HÉBERGEMENT (PLAN DE SECOURS)")
         
         c1, c2 = st.columns(2)
         with c1:
             st.download_button("💾 1. Télécharger index.html", st.session_state.final, "index.html", "text/html", use_container_width=True)
-        with c2:
-            st.link_button("🚀 2. Ouvrir Tiiny.host", "https://tiiny.host", use_container_width=True)
+            st.info("Testez ce fichier sur votre PC. Il doit s'ouvrir.")
             
-        st.info("💡 Sur Tiiny.host : Glissez simplement le fichier `index.html` téléchargé. C'est tout.")
+        with c2:
+            st.markdown("**Où l'héberger si Tiiny bloque ?**")
+            st.link_button("1. Essayez Vercel (Gratuit)", "https://vercel.com/new", use_container_width=True)
+            st.link_button("2. Essayez Static.app (Gratuit)", "https://static.app", use_container_width=True)
+            st.link_button("3. Essayez Surge.sh (Pro)", "https://surge.sh", use_container_width=True)
+            
+        st.markdown("---")
+        # BOUTON ZIP DE SECOURS
+        zip_data = create_zip_archive(st.session_state.final)
+        st.download_button(label="📦 Télécharger en ZIP (Pour Netlify/Vercel)", data=zip_data, file_name="site_web.zip", mime="application/zip", use_container_width=True)
         st.divider()
 
     up_html = st.file_uploader("Charger HTML", type=['html'])
