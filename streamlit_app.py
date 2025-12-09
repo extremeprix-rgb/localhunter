@@ -8,8 +8,9 @@ import hashlib
 import urllib.parse
 import zipfile
 import io
+from PIL import Image
 
-st.set_page_config(page_title="LocalHunter V35 (Gist Hosting)", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="LocalHunter V36 (Githack Auto)", page_icon="🛡️", layout="wide")
 
 # CSS
 st.markdown("""
@@ -19,7 +20,7 @@ st.markdown("""
     .badge-weak { background-color: #ffedd5; color: #9a3412; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #f97316; }
     .badge-ok { background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; }
     .step-box { background-color: #f0fdf4; border: 1px solid #16a34a; padding: 20px; border-radius: 10px; margin: 15px 0; }
-    .gist-link { font-family: monospace; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; }
+    .tool-box { background-color: #fff7ed; border: 1px solid #ea580c; padding: 15px; border-radius: 8px; margin-top: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -55,23 +56,24 @@ def clean_html_output(raw_text):
     if start != -1 and end != -1: return text[start : end + 7]
     return text
 
-def create_zip_archive(html_content):
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        info = zipfile.ZipInfo("index.html")
-        info.date_time = time.localtime(time.time())[:6]
-        info.compress_type = zipfile.ZIP_DEFLATED
-        zip_file.writestr(info, html_content.encode('utf-8'))
-    return zip_buffer.getvalue()
-
 def image_to_base64(uploaded_file):
     if uploaded_file is None: return None
     try:
-        bytes_data = uploaded_file.getvalue()
-        b64_str = base64.b64encode(bytes_data).decode()
-        mime = "image/png" if uploaded_file.name.lower().endswith(".png") else "image/jpeg"
-        return f"data:{mime};base64,{b64_str}"
-    except: return None
+        # Compression automatique pour réduire la taille du fichier HTML final
+        image = Image.open(uploaded_file)
+        # Convertir en RGB si nécessaire (png transparent -> jpg fond noir sinon erreur)
+        if image.mode in ("RGBA", "P"): image = image.convert("RGB")
+        
+        # Redimensionnement max HD
+        image.thumbnail((1200, 1200))
+        
+        buffered = io.BytesIO()
+        image.save(buffered, format="JPEG", quality=70) # Qualité 70% pour légèreté
+        b64_str = base64.b64encode(buffered.getvalue()).decode()
+        return f"data:image/jpeg;base64,{b64_str}"
+    except Exception as e:
+        st.error(f"Erreur image: {e}")
+        return None
 
 def get_images_from_html(html_content):
     pattern = r'<img\s+[^>]*?src=["\']([^"\']*?)["\']'
@@ -225,7 +227,7 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V35 (Gist Hosting)")
+st.title("LocalHunter V36 (Githack Auto)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -264,7 +266,7 @@ with tab1:
                             st.success("Fait ! Voir Atelier.")
 
                 st.markdown("---")
-                hosted_link = st.text_input("🔗 Lien Gist/Site", key=f"lnk_{p.get('place_id')}")
+                hosted_link = st.text_input("🔗 Lien Final (ex: raw.githack.com/...)", key=f"lnk_{p.get('place_id')}")
 
                 t_email, t_sms, t_script = st.tabs(["📧 Email", "📱 SMS", "📞 Téléphone"])
                 
@@ -294,26 +296,26 @@ with tab2:
     if st.session_state.final:
         st.markdown("""
         <div class="step-box">
-            <h3>🛡️ HÉBERGEMENT INFAILLIBLE (GITHUB GIST)</h3>
-            <p>Cette méthode marche TOUJOURS (car GitHub ne bannit pas).</p>
+            <h3>🛡️ MÉTHODE GITHACK (100% FONCTIONNELLE)</h3>
             <ol>
-                <li>Copiez le code HTML ci-dessous (Bouton en haut à droite de la boite noire).</li>
+                <li>Copiez le code HTML (Bouton ci-dessous).</li>
                 <li>Allez sur <a href="https://gist.github.com" target="_blank"><b>gist.github.com</b></a>.</li>
-                <li>Collez le code. Nommez le fichier <code>index.html</code>. Cliquez sur <b>Create public gist</b>.</li>
-                <li>Cliquez sur le bouton <b>"Raw"</b> sur votre Gist.</li>
-                <li>Copiez l'URL de cette page brute.</li>
-                <li>Allez sur <a href="https://raw.githack.com" target="_blank"><b>raw.githack.com</b></a>, collez l'URL "Raw" et prenez le lien de production.</li>
+                <li>Collez le code, nommez <code>index.html</code>, faites <b>Create Public Gist</b>.</li>
+                <li>Cliquez sur <b>Raw</b>. Copiez l'URL de la page (ça commence par <code>gist.githubusercontent...</code>).</li>
+                <li>Collez cette URL ci-dessous pour la convertir en VRAI LIEN SITE WEB.</li>
             </ol>
         </div>
         """, unsafe_allow_html=True)
         
-        c1, c2 = st.columns(2)
-        with c1:
-            st.download_button("💾 Télécharger index.html", st.session_state.final, "index.html", "text/html", use_container_width=True)
-        with c2:
-            st.link_button("🚀 Ouvrir GitHub Gist", "https://gist.github.com", use_container_width=True)
-            
-        st.text_area("Code HTML à copier :", st.session_state.final, height=200)
+        # CONVERTISSEUR MAGIQUE
+        raw_url = st.text_input("Collez l'URL 'Raw' de GitHub ici :")
+        if raw_url and "gist.githubusercontent" in raw_url:
+            prod_url = raw_url.replace("raw.githubusercontent.com", "raw.githack.com").replace("gist.githubusercontent.com", "raw.githack.com")
+            st.success("✅ LIEN DU SITE PRÊT :")
+            st.code(prod_url, language="text")
+            st.link_button("🌍 Voir le site", prod_url)
+        
+        st.text_area("Code HTML à copier sur Gist :", st.session_state.final, height=200)
         st.divider()
 
     up_html = st.file_uploader("Charger HTML", type=['html'])
