@@ -71,49 +71,61 @@ def surgical_email_config(html_content, email):
         return html_content.replace('<form', f'<form action="https://formsubmit.co/{email}"')
 
 # --- SEARCH & GEN ---
+
 def smart_search(job, city, api_key, max_pages):
     all_results = []
     seen = set()
     status_box = st.empty()
-    status_box.info(f"📍 Scan de {city}...")
-    try:
-        params = {"engine": "google_maps", "q": f"{job} {city}", "type": "search", "google_domain": "google.fr", "hl": "fr", "num": 20, "api_key": api_key}
-        search = GoogleSearch(params)
-        data = search.get_dict()
-        results = data.get("local_results", [])
-        for res in results:
-            pid = res.get("place_id")
-            if pid and pid not in seen:
-                all_results.append(res)
-                seen.add(pid)
+    
+    # Configuration de base
+    params = {
+        "engine": "google_maps",
+        "q": f"{job} {city}",
+        "type": "search",
+        "google_domain": "google.fr",
+        "hl": "fr",
+        "num": 20, # Maximum autorisé par SerpApi par appel
+        "api_key": api_key
+    }
+
+    # Boucle sur le nombre de pages demandées
+    for page in range(max_pages):
+        status_box.info(f"📍 Scan de {city} en cours... (Page {page + 1}/{max_pages})")
+        
+        # On décale le début des résultats (0, 20, 40, 60, 80)
+        params["start"] = page * 20
+        
         try:
-            url = data.get("search_metadata", {}).get("google_maps_url", "")
-            match = re.search(r'@([-0-9.]+),([-0-9.]+),([0-9.]+)z', url)
-            if match and max_pages > 1:
-                ll_token = f"@{match.group(1)},{match.group(2)},{match.group(3)}z"
-                for page in range(1, max_pages):
-                    try:
-                        params["start"] = page * 20
-                        params["ll"] = ll_token
-                        sub = GoogleSearch(params).get_dict().get("local_results", [])
-                        if not sub: break
-                        for r in sub:
-                            if r.get("place_id") not in seen:
-                                all_results.append(r)
-                                seen.add(r.get("place_id"))
-                        time.sleep(1)
-                    except: break
-        except: pass
-    except Exception as e: st.error(str(e))
-    status_box.success(f"✅ {len(all_results)} résultats.")
-    time.sleep(1)
+            search = GoogleSearch(params)
+            data = search.get_dict()
+            results = data.get("local_results", [])
+            
+            # Si pas de résultats sur cette page, on arrête
+            if not results:
+                break
+                
+            for res in results:
+                pid = res.get("place_id")
+                # On ajoute si on ne l'a pas déjà vu
+                if pid and pid not in seen:
+                    all_results.append(res)
+                    seen.add(pid)
+            
+            # Petite pause pour éviter de brusquer l'API
+            time.sleep(1)
+            
+        except Exception as e:
+            st.error(f"Erreur sur la page {page+1}: {str(e)}")
+            break
+            
+    status_box.success(f"✅ Scan terminé : {len(all_results)} entreprises analysées au total.")
+    time.sleep(2)
     status_box.empty()
     return all_results
 
 def generate_code(name, job, city, addr, tel):
     ts = int(time.time())
     
-    # Prompt SEO & DESIGN MODERN
     prompt = f"""
     Agis comme un expert Web Designer & SEO. Crée un site One-Page HTML5 moderne (TailwindCSS) pour {name} ({job}) à {city}.
     Infos: Adresse: {addr}, Tel: {tel}.
@@ -127,7 +139,7 @@ def generate_code(name, job, city, addr, tel):
     🖼️ RÈGLE ABSOLUE IMAGES (Pour compatibilité outil de remplacement) :
     - N'utilise JAMAIS 'background-image' en CSS. 
     - Utilise UNIQUEMENT des balises <img src="..." class="object-cover ...">.
-    - URLs obligatoires :
+    - URLs obligatoires (LoremFlickr avec locks différents pour varier) :
       1. Hero (Pleine largeur absolute) : src="https://loremflickr.com/1600/900/{job.replace(' ', ',')}?lock=1"
       2. About (Carrée) : src="https://loremflickr.com/800/800/{job.replace(' ', ',')}?lock=2"
       3. Service 1 : src="https://loremflickr.com/600/400/{job.replace(' ', ',')}?lock=3"
@@ -168,9 +180,9 @@ tab1, tab2 = st.tabs(["🕵️ CHASSE (Scan & Gen)", "🎨 ATELIER (Custom & Ima
 
 with tab1:
     c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
-    with c1: job = st.text_input("Activité", "Rénovation")
+    with c1: job = st.text_input("Activité", "Maçon")
     with c2: city = st.text_input("Ville", "Lyon")
-    with c3: pages = st.number_input("Pages Google", 1, 3, 1)
+    with c3: pages = st.number_input("Pages Google (20 résultats/page)", 1, 5, 3) # J'ai augmenté à 5 pages max
     with c4: 
         st.write("")
         st.write("")
