@@ -7,26 +7,29 @@ import re
 import base64
 import hashlib
 
-st.set_page_config(page_title="LocalHunter V13 (Deep Scan)", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="LocalHunter V14 (Scan Fix)", page_icon="🕵️‍♂️", layout="wide")
 
-# CSS Interface Streamlit
+# CSS
 st.markdown("""
 <style>
-    div.stButton > button:first-child { background-color: #0f172a; color: white; border-radius: 8px; font-weight: 600; padding: 0.5rem 1rem; }
-    .stTextArea textarea { font-family: 'Courier New', monospace; font-size: 12px; }
-    .badge-no-site { background-color: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; }
-    .badge-weak-site { background-color: #ffedd5; color: #9a3412; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; }
-    .badge-ok-site { background-color: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; }
+    div.stButton > button:first-child { background-color: #0f172a; color: white; border-radius: 8px; font-weight: 600; }
+    .badge-none { background-color: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #ef4444; }
+    .badge-weak { background-color: #ffedd5; color: #9a3412; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #f97316; }
+    .badge-ok { background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; }
 </style>
 """, unsafe_allow_html=True)
 
-# Secrets
+# Secrets Management
 try:
     api_key = st.secrets.get("MISTRAL_KEY", st.secrets.get("OPENAI_KEY"))
-    serpapi_key = st.secrets["SERPAPI_KEY"]
+    serpapi_key = st.secrets.get("SERPAPI_KEY") # Utilisation de .get pour éviter le crash immédiat
     client = openai.OpenAI(api_key=api_key, base_url="https://api.mistral.ai/v1")
 except:
-    st.error("⚠️ Clés API manquantes.")
+    st.error("⚠️ ERREUR CONFIGURATION : Les clés API ne sont pas détectées dans .streamlit/secrets.toml")
+    st.stop()
+
+if not serpapi_key:
+    st.error("⚠️ ERREUR CRITIQUE : La clé SERPAPI_KEY est manquante. Le scan ne peut pas fonctionner.")
     st.stop()
 
 # --- FONCTIONS TECHNIQUES ---
@@ -45,9 +48,7 @@ def image_to_base64(uploaded_file):
         b64_str = base64.b64encode(bytes_data).decode()
         mime = "image/png" if uploaded_file.name.lower().endswith(".png") else "image/jpeg"
         return f"data:{mime};base64,{b64_str}"
-    except Exception as e:
-        st.error(f"Erreur conversion image: {e}")
-        return None
+    except: return None
 
 def get_images_from_html(html_content):
     pattern = r'<img\s+[^>]*?src=["\']([^"\']*?)["\']'
@@ -72,135 +73,117 @@ def surgical_email_config(html_content, email):
     else:
         return html_content.replace('<form', f'<form action="https://formsubmit.co/{email}"')
 
-# --- SEARCH ENGINE V2 (DEEP & SMART) ---
+# --- MOTEUR DE SCAN V14 (DEBUG & FORCE PAGINATION) ---
 
-def analyze_website_quality(website_url):
-    """Détermine si c'est un vrai site, pas de site, ou un site 'faible' (fb, pagesjaunes...)"""
-    if not website_url:
-        return "NONE" # Pas de site
-    
-    url = website_url.lower()
-    weak_domains = ["facebook.com", "instagram.com", "linkedin.com", "pagesjaunes.fr", "business.site", "societe.com", "mappy.com"]
-    
-    for domain in weak_domains:
-        if domain in url:
-            return "WEAK" # Site faible (Opportunité !)
-            
-    return "OK" # Vrai site
+def check_site_quality(url):
+    if not url: return "NONE"
+    u = url.lower()
+    weak_list = ["facebook", "instagram", "linkedin", "pagesjaunes", "societe.com", "mappy", "business.site"]
+    if any(weak in u for weak in weak_list): return "WEAK"
+    return "OK"
 
 def smart_search(job, city, api_key, max_pages):
     all_results = []
-    seen = set()
-    status_box = st.empty()
+    seen_ids = set()
+    status_container = st.empty()
     
-    # Paramètres optimisés pour le Deep Scan
-    params = {
-        "engine": "google_maps",
-        "q": f"{job} {city}",
-        "type": "search",
-        "google_domain": "google.fr",
-        "hl": "fr",
-        "num": 20,
-        "api_key": api_key
-    }
+    # 1. Vérification Clé API
+    if not api_key:
+        st.error("Clé API SerpApi vide !")
+        return []
 
-    count_total = 0
-    
+    # 2. Boucle de pagination forcée
     for page in range(max_pages):
-        status_box.info(f"🛰️ Scan Page {page + 1}/{max_pages} en cours... ({count_total} trouvés)")
+        start_index = page * 20
+        status_container.info(f"⏳ Scan Page {page + 1} (Résultats {start_index} à {start_index + 20})...")
         
-        params["start"] = page * 20
+        params = {
+            "engine": "google_maps",
+            "q": f"{job} {city}",
+            "type": "search",
+            "google_domain": "google.fr",
+            "hl": "fr",
+            "start": start_index,
+            "num": 20,
+            "api_key": api_key
+        }
         
         try:
-            search = GoogleSearch(params)
-            data = search.get_dict()
-            results = data.get("local_results", [])
+            # Appel API Synchrone
+            client_search = GoogleSearch(params)
+            data = client_search.get_dict()
             
-            if not results:
+            # Gestion des erreurs API
+            if "error" in data:
+                st.error(f"Erreur SerpApi : {data['error']}")
                 break
                 
-            for res in results:
-                pid = res.get("place_id")
-                if pid and pid not in seen:
-                    # ANALYSE DU SITE ICI
-                    website = res.get("website")
-                    quality = analyze_website_quality(website)
-                    
-                    # On injecte l'analyse dans le résultat
-                    res["site_quality"] = quality 
+            local_results = data.get("local_results", [])
+            
+            if not local_results:
+                status_container.warning(f"⚠️ Page {page+1} vide. Arrêt du scan.")
+                break # Plus de résultats Google
+            
+            # Traitement des résultats
+            new_count = 0
+            for res in local_results:
+                pid = res.get("place_id", str(hash(res.get("title")))) # Fallback ID
+                if pid not in seen_ids:
+                    # Analyse Qualité Site
+                    site_status = check_site_quality(res.get("website"))
+                    res["site_quality"] = site_status
                     
                     all_results.append(res)
-                    seen.add(pid)
-                    count_total += 1
+                    seen_ids.add(pid)
+                    new_count += 1
             
-            time.sleep(1.5) # Pause pour éviter blocage
+            # PAUSE IMPORTANTE POUR LA STABILITÉ
+            time.sleep(2) 
             
         except Exception as e:
-            st.error(f"Erreur API Page {page+1}: {e}")
+            st.error(f"Crash technique page {page}: {e}")
             break
             
-    # TRI INTELLIGENT : NONE en premier, puis WEAK, puis OK
-    priority_order = {"NONE": 0, "WEAK": 1, "OK": 2}
-    all_results.sort(key=lambda x: priority_order[x["site_quality"]])
+    status_container.success(f"✅ Scan Terminé : {len(all_results)} entreprises trouvées sur {max_pages} pages.")
+    time.sleep(3)
+    status_container.empty()
     
-    status_box.success(f"✅ Scan terminé : {count_total} entreprises trouvées.")
-    time.sleep(2)
-    status_box.empty()
+    # TRI : Les "SANS SITE" en premier
+    order = {"NONE": 0, "WEAK": 1, "OK": 2}
+    all_results.sort(key=lambda x: order[x["site_quality"]])
+    
     return all_results
 
+# --- GENERATION ---
 def generate_code(name, job, city, addr, tel):
-    ts = int(time.time())
-    
-    # Prompt V12 (SEO & DESIGN) conservé
     prompt = f"""
-    Agis comme un expert Web Designer & SEO. Crée un site One-Page HTML5 moderne (TailwindCSS) pour {name} ({job}) à {city}.
-    Infos: Adresse: {addr}, Tel: {tel}.
+    Agis comme un expert Web Designer. Crée un site One-Page HTML5 (TailwindCSS) pour {name} ({job}) à {city}.
+    Infos: {addr}, {tel}.
     
-    🎨 DESIGN & STYLE :
-    - Utilise une police moderne (Google Fonts 'Inter' ou 'Poppins').
-    - Palette de couleurs : Blanc, Gris ardoise (Slate-900), et une couleur d'accentuation forte (Blue-600 ou Indigo-600).
-    - Utilise des ombres douces (shadow-xl), des coins arrondis (rounded-2xl) et des dégradés subtils.
-    - Layout aéré, beaucoup d'espace blanc.
-
-    🖼️ RÈGLE ABSOLUE IMAGES :
-    - N'utilise JAMAIS 'background-image' en CSS. 
-    - Utilise UNIQUEMENT des balises <img src="...">.
-    - URLs obligatoires :
-      1. Hero : src="https://loremflickr.com/1600/900/{job.replace(' ', ',')}?lock=1"
-      2. About : src="https://loremflickr.com/800/800/{job.replace(' ', ',')}?lock=2"
-      3. Service 1 : src="https://loremflickr.com/600/400/{job.replace(' ', ',')}?lock=3"
-      4. Service 2 : src="https://loremflickr.com/600/400/{job.replace(' ', ',')}?lock=4"
-      5. Service 3 : src="https://loremflickr.com/600/400/{job.replace(' ', ',')}?lock=5"
-
-    📝 CONTENU SEO RICHE :
-    1. Navbar Sticky + Logo + CTA.
-    2. Hero Section : Titre H1, Sous-titre, CTA.
-    3. Section Confiance (Stats).
-    4. Section À Propos.
-    5. Section Services (3 Cartes détaillées).
-    6. Section Pourquoi Nous (Liste).
-    7. Section FAQ (3 questions).
-    8. Section Témoignages (2 avis).
-    9. Footer complet.
-
-    TECHNIQUE :
-    - Formulaire : <form action="https://formsubmit.co/votre-email@gmail.com" method="POST" class="...">
-    - Code HTML brut uniquement.
+    IMAGES (Strictement <img src="...">) :
+    1. Hero: "https://loremflickr.com/1600/900/{job.replace(' ', ',')}?lock=1"
+    2. About: "https://loremflickr.com/800/800/{job.replace(' ', ',')}?lock=2"
+    3. Services: 3 images random lock=3,4,5.
+    
+    STRUCTURE :
+    - Navbar, Hero (H1+CTA), Confiance (Stats), About, Services (3 cartes), FAQ, Footer.
+    - Formulaire fonctionnel: <form action="https://formsubmit.co/votre-email@gmail.com" method="POST">
+    - Design : Moderne, épuré, ombres douces (shadow-lg), rounded-xl.
     """
     try:
         resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
         return clean_html_output(resp.choices[0].message.content)
     except: return "<!-- Erreur Gen -->"
 
-def generate_email_prospection(name, site_status):
-    context = "n'a pas de site internet" if site_status == "NONE" else "a un site peu optimisé (Facebook/PagesJaunes)"
+def generate_email_prospection(name, status):
+    context = "n'a pas de site web" if status == "NONE" else "a une visibilité limitée"
     try:
-        resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": f"Rédige un Email de prospection à froid (Cold Emailing) méthode AIDA pour {name}. Contexte: Le prospect {context}. Propose une maquette gratuite moderne."}])
+        resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": f"Email court AIDA pour {name} ({context}). Propose maquette gratuite."}])
         return resp.choices[0].message.content
     except: return "Erreur Email"
 
-# --- INTERFACE ---
-st.title("LocalHunter V13 (Deep Scan & Filter Fix)")
+# --- UI ---
+st.title("LocalHunter V14 (Deep Scan Fix)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -208,107 +191,82 @@ with tab1:
     c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
     with c1: job = st.text_input("Activité", "Maçon")
     with c2: city = st.text_input("Ville", "Lyon")
-    with c3: pages = st.number_input("Pages à scanner", 1, 10, 3) 
+    with c3: pages = st.number_input("Pages (1 page = 20 résultats)", 1, 10, 3)
     with c4: 
         st.write("")
         st.write("")
-        if st.button("LANCER SCAN", use_container_width=True):
+        if st.button("LANCER LE SCAN", use_container_width=True):
             st.session_state.prospects = []
-            results = smart_search(job, city, serpapi_key, pages)
-            st.session_state.prospects = results
+            st.session_state.prospects = smart_search(job, city, serpapi_key, pages)
 
-    if 'prospects' in st.session_state:
+    if 'prospects' in st.session_state and st.session_state.prospects:
         results = st.session_state.prospects
-        count_none = len([r for r in results if r["site_quality"] == "NONE"])
-        count_weak = len([r for r in results if r["site_quality"] == "WEAK"])
+        none_cnt = len([x for x in results if x['site_quality'] == "NONE"])
+        weak_cnt = len([x for x in results if x['site_quality'] == "WEAK"])
         
-        st.info(f"📊 Analyse : {len(results)} résultats affichés. {count_none} 🔴 Sans Site | {count_weak} 🟠 Site Faible (Facebook/PJ)")
-            
+        st.info(f"🎯 CIBLES : {none_cnt} Sans Site | {weak_cnt} Site Faible | {len(results)} Total")
+        
         for p in results:
-            # Code couleur visuel
             q = p["site_quality"]
-            color_border = "border-left: 5px solid #ef4444;" if q == "NONE" else ("border-left: 5px solid #f97316;" if q == "WEAK" else "border-left: 5px solid #22c55e;")
+            # Bordure couleur
+            color = "#ef4444" if q == "NONE" else ("#f97316" if q == "WEAK" else "#22c55e")
+            badge = '<span class="badge-none">🔴 PAS DE SITE</span>' if q == "NONE" else ('<span class="badge-weak">🟠 SITE FAIBLE</span>' if q == "WEAK" else '<span class="badge-ok">🟢 OK</span>')
             
-            with st.container():
-                # Card personnalisée en HTML/CSS dans Streamlit
-                st.markdown(f"""
-                <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); {color_border}">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <div>
-                            <h3 style="margin:0; font-size:1.1em; font-weight:bold;">{p.get('title')}</h3>
-                            <p style="margin:0; color:#666; font-size:0.9em;">📍 {p.get('address')}</p>
-                            <p style="margin:5px 0 0 0; font-size:0.85em;">
-                                {f'<span class="badge-no-site">🔴 SANS SITE WEB</span>' if q == "NONE" else (f'<span class="badge-weak-site">🟠 SITE FAIBLE ({p.get("website")})</span>' if q == "WEAK" else f'<span class="badge-ok-site">🟢 SITE EXISTANT</span>')}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+            with st.expander(f"{'🔴' if q=='NONE' else ('🟠' if q=='WEAK' else '🟢')} {p.get('title')} - {p.get('address')}"):
+                st.markdown(f"**Statut Web :** {badge} <br> **Tel:** {p.get('phone')}", unsafe_allow_html=True)
                 
-                # Boutons d'action
-                c_a, c_b = st.columns([1, 4])
+                c_a, c_b = st.columns(2)
                 with c_a:
-                    pid = p.get('place_id')
-                    if st.button("⚡ Créer Site", key=f"gen_{pid}"):
-                         with st.spinner("Génération..."):
+                    if st.button("⚡ Générer Site", key=f"g_{p.get('place_id')}"):
+                        with st.spinner("Création..."):
                             code = generate_code(p.get('title'), job, city, p.get('address'), p.get('phone'))
                             st.session_state['final'] = code
-                            st.success("Généré ! Voir Atelier.")
+                            st.success("Fait ! Voir Atelier.")
                 with c_b:
-                    if st.button("📧 Email", key=f"mail_{pid}"):
-                        st.write(generate_email_prospection(p.get('title'), q))
+                    if st.button("📧 Email", key=f"e_{p.get('place_id')}"):
+                        st.text_area("Email", generate_email_prospection(p.get('title'), q))
 
 with tab2:
-    st.header("🔧 Atelier de Finition")
+    st.header("🔧 Atelier")
     
     if 'final' in st.session_state:
-        st.download_button("💾 TÉLÉCHARGER LE SITE (index.html)", st.session_state['final'], "index.html", "text/html", use_container_width=True)
+        st.download_button("💾 TÉLÉCHARGER LE SITE", st.session_state['final'], "index.html", "text/html", use_container_width=True)
         st.divider()
 
-    up_html = st.file_uploader("Charger un fichier HTML", type=['html'])
-    
+    up_html = st.file_uploader("Charger HTML", type=['html'])
     if up_html:
-        file_hash = hashlib.md5(up_html.getvalue()).hexdigest()
-        if 'current_file_hash' not in st.session_state or st.session_state['current_file_hash'] != file_hash:
+        h = hashlib.md5(up_html.getvalue()).hexdigest()
+        if st.session_state.get('chash') != h:
             st.session_state['final'] = up_html.getvalue().decode("utf-8")
-            st.session_state['current_file_hash'] = file_hash
+            st.session_state['chash'] = h
 
     if 'final' in st.session_state:
-        current_html = st.session_state['final']
+        html = st.session_state['final']
         c1, c2 = st.columns(2)
         
         with c1:
             st.subheader("🖼️ Images")
-            imgs = get_images_from_html(current_html)
+            imgs = get_images_from_html(html)
             if imgs:
-                opts = {i: f"Image #{i+1}" for i, _ in enumerate(imgs)}
-                idx = st.selectbox("Choisir image", list(opts.keys()), format_func=lambda x: opts[x])
-                
-                # Preview
-                try: 
-                    if imgs[idx].startswith("http"): st.image(imgs[idx], width=150)
-                except: pass
-
-                u = st.file_uploader("Remplacer par", type=['jpg','png'])
-                if u and st.button("Fusionner"):
-                    b64 = image_to_base64(u)
+                idx = st.selectbox("Choisir image", range(len(imgs)), format_func=lambda x: f"Image #{x+1}")
+                up_img = st.file_uploader("Nouvelle image", type=['jpg','png'], key="u_img")
+                if up_img and st.button("Remplacer"):
+                    b64 = image_to_base64(up_img)
                     if b64:
-                        st.session_state['final'] = replace_specific_image(current_html, b64, idx)
+                        st.session_state['final'] = replace_specific_image(html, b64, idx)
                         st.rerun()
-            else:
-                st.warning("Pas d'images trouvées.")
-
+        
         with c2:
             st.subheader("✍️ Texte & Email")
-            if st.button("Configurer Email Client"):
-                email = st.text_input("Email:")
-                if email and "@" in email:
-                    st.session_state['final'] = surgical_email_config(current_html, email)
+            em = st.text_input("Email Client")
+            if st.button("Configurer Email"):
+                if "@" in em:
+                    st.session_state['final'] = surgical_email_config(html, em)
                     st.success("OK")
             
-            new_code = st.text_area("Éditer HTML", current_html, height=200)
-            if st.button("Sauvegarder Texte"):
-                st.session_state['final'] = new_code
+            new_txt = st.text_area("Editer HTML", html, height=200)
+            if st.button("Sauvegarder"):
+                st.session_state['final'] = new_txt
                 st.rerun()
 
         st.components.v1.html(st.session_state['final'], height=800, scrolling=True)
