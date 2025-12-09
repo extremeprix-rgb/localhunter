@@ -7,7 +7,7 @@ import re
 import base64
 import hashlib
 
-st.set_page_config(page_title="LocalHunter V14 (Scan Fix)", page_icon="🕵️‍♂️", layout="wide")
+st.set_page_config(page_title="LocalHunter V15 (GPS Fix)", page_icon="📍", layout="wide")
 
 # CSS
 st.markdown("""
@@ -22,14 +22,14 @@ st.markdown("""
 # Secrets Management
 try:
     api_key = st.secrets.get("MISTRAL_KEY", st.secrets.get("OPENAI_KEY"))
-    serpapi_key = st.secrets.get("SERPAPI_KEY") # Utilisation de .get pour éviter le crash immédiat
+    serpapi_key = st.secrets.get("SERPAPI_KEY") 
     client = openai.OpenAI(api_key=api_key, base_url="https://api.mistral.ai/v1")
 except:
-    st.error("⚠️ ERREUR CONFIGURATION : Les clés API ne sont pas détectées dans .streamlit/secrets.toml")
+    st.error("⚠️ ERREUR CONFIGURATION : Les clés API ne sont pas détectées.")
     st.stop()
 
 if not serpapi_key:
-    st.error("⚠️ ERREUR CRITIQUE : La clé SERPAPI_KEY est manquante. Le scan ne peut pas fonctionner.")
+    st.error("⚠️ ERREUR CRITIQUE : La clé SERPAPI_KEY est manquante.")
     st.stop()
 
 # --- FONCTIONS TECHNIQUES ---
@@ -73,7 +73,7 @@ def surgical_email_config(html_content, email):
     else:
         return html_content.replace('<form', f'<form action="https://formsubmit.co/{email}"')
 
-# --- MOTEUR DE SCAN V14 (DEBUG & FORCE PAGINATION) ---
+# --- MOTEUR DE SCAN V15 (GPS LOCK) ---
 
 def check_site_quality(url):
     if not url: return "NONE"
@@ -87,16 +87,14 @@ def smart_search(job, city, api_key, max_pages):
     seen_ids = set()
     status_container = st.empty()
     
-    # 1. Vérification Clé API
-    if not api_key:
-        st.error("Clé API SerpApi vide !")
-        return []
+    # Variable pour stocker la "Zone Géographique" (ll parameter)
+    gps_context = None 
 
-    # 2. Boucle de pagination forcée
     for page in range(max_pages):
         start_index = page * 20
-        status_container.info(f"⏳ Scan Page {page + 1} (Résultats {start_index} à {start_index + 20})...")
+        status_container.info(f"⏳ Scan Page {page + 1}/{max_pages}...")
         
+        # Paramètres de base
         params = {
             "engine": "google_maps",
             "q": f"{job} {city}",
@@ -108,47 +106,58 @@ def smart_search(job, city, api_key, max_pages):
             "api_key": api_key
         }
         
+        # CORRECTION CRITIQUE : Si on a trouvé le GPS à la page 1, on l'injecte pour les pages suivantes
+        if gps_context and page > 0:
+            params["ll"] = gps_context
+        
         try:
-            # Appel API Synchrone
             client_search = GoogleSearch(params)
             data = client_search.get_dict()
             
-            # Gestion des erreurs API
+            # Gestion erreurs API
             if "error" in data:
-                st.error(f"Erreur SerpApi : {data['error']}")
+                st.warning(f"Note SerpApi (Page {page+1}) : {data['error']}")
+                # Si erreur "Missing location", c'est qu'on a pas réussi à choper le GPS page 1
+                if "Missing location" in data['error']:
+                    st.error("⚠️ Impossible de paginer sans coordonnées GPS. Essayez de préciser la ville (ex: 'Lyon France').")
                 break
-                
+            
+            # 1. Extraction du GPS pour les pages suivantes (seulement au premier tour)
+            if page == 0:
+                try:
+                    # On cherche l'URL interne qui contient @lat,lon,zoom
+                    meta_url = data.get("search_metadata", {}).get("google_maps_url", "")
+                    # Regex pour extraire @45.75,4.85,14z
+                    match = re.search(r'@([-0-9.]+),([-0-9.]+),([0-9.]+)z', meta_url)
+                    if match:
+                        gps_context = f"@{match.group(1)},{match.group(2)},{match.group(3)}z"
+                        # print(f"GPS LOCK: {gps_context}") # Debug
+                except:
+                    pass
+
             local_results = data.get("local_results", [])
             
             if not local_results:
-                status_container.warning(f"⚠️ Page {page+1} vide. Arrêt du scan.")
-                break # Plus de résultats Google
+                break 
             
-            # Traitement des résultats
-            new_count = 0
             for res in local_results:
-                pid = res.get("place_id", str(hash(res.get("title")))) # Fallback ID
+                pid = res.get("place_id", str(hash(res.get("title"))))
                 if pid not in seen_ids:
-                    # Analyse Qualité Site
-                    site_status = check_site_quality(res.get("website"))
-                    res["site_quality"] = site_status
-                    
+                    res["site_quality"] = check_site_quality(res.get("website"))
                     all_results.append(res)
                     seen_ids.add(pid)
-                    new_count += 1
             
-            # PAUSE IMPORTANTE POUR LA STABILITÉ
-            time.sleep(2) 
+            time.sleep(2) # Pause anti-blocage
             
         except Exception as e:
-            st.error(f"Crash technique page {page}: {e}")
+            st.error(f"Erreur technique : {e}")
             break
             
-    status_container.success(f"✅ Scan Terminé : {len(all_results)} entreprises trouvées sur {max_pages} pages.")
-    time.sleep(3)
+    status_container.success(f"✅ Scan Terminé : {len(all_results)} résultats trouvés.")
+    time.sleep(2)
     status_container.empty()
     
-    # TRI : Les "SANS SITE" en premier
+    # TRI
     order = {"NONE": 0, "WEAK": 1, "OK": 2}
     all_results.sort(key=lambda x: order[x["site_quality"]])
     
@@ -183,7 +192,7 @@ def generate_email_prospection(name, status):
     except: return "Erreur Email"
 
 # --- UI ---
-st.title("LocalHunter V14 (Deep Scan Fix)")
+st.title("LocalHunter V15 (GPS Fix)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -191,7 +200,7 @@ with tab1:
     c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
     with c1: job = st.text_input("Activité", "Maçon")
     with c2: city = st.text_input("Ville", "Lyon")
-    with c3: pages = st.number_input("Pages (1 page = 20 résultats)", 1, 10, 3)
+    with c3: pages = st.number_input("Pages (20 res/page)", 1, 10, 3)
     with c4: 
         st.write("")
         st.write("")
@@ -208,8 +217,6 @@ with tab1:
         
         for p in results:
             q = p["site_quality"]
-            # Bordure couleur
-            color = "#ef4444" if q == "NONE" else ("#f97316" if q == "WEAK" else "#22c55e")
             badge = '<span class="badge-none">🔴 PAS DE SITE</span>' if q == "NONE" else ('<span class="badge-weak">🟠 SITE FAIBLE</span>' if q == "WEAK" else '<span class="badge-ok">🟢 OK</span>')
             
             with st.expander(f"{'🔴' if q=='NONE' else ('🟠' if q=='WEAK' else '🟢')} {p.get('title')} - {p.get('address')}"):
@@ -264,9 +271,4 @@ with tab2:
                     st.session_state['final'] = surgical_email_config(html, em)
                     st.success("OK")
             
-            new_txt = st.text_area("Editer HTML", html, height=200)
-            if st.button("Sauvegarder"):
-                st.session_state['final'] = new_txt
-                st.rerun()
-
-        st.components.v1.html(st.session_state['final'], height=800, scrolling=True)
+            new_txt = st.text_area("Editer HTML
