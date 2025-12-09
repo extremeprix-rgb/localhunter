@@ -7,18 +7,18 @@ import base64
 import hashlib
 import urllib.parse
 
-st.set_page_config(page_title="LocalHunter V22 (Fast Workflow)", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="LocalHunter V23 (Free Hosting)", page_icon="⚡", layout="wide")
 
 # CSS
 st.markdown("""
 <style>
-    div.stButton > button:first-child { background-color: #0f172a; color: white; border-radius: 6px; font-weight: 600; }
+    div.stButton > button:first-child { background-color: #0f172a; color: white; border-radius: 8px; font-weight: 600; }
     .badge-none { background-color: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #ef4444; }
     .badge-weak { background-color: #ffedd5; color: #9a3412; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #f97316; }
     .badge-ok { background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; }
     .step-box { background-color: #f8fafc; border: 1px dashed #94a3b8; padding: 15px; border-radius: 8px; margin: 10px 0; }
-    a.tiiny-btn { display: inline-block; background-color: #6366f1; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 10px; }
-    a.tiiny-btn:hover { background-color: #4f46e5; }
+    a.host-btn { display: inline-block; background-color: #10b981; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 10px; margin-right: 10px;}
+    a.host-btn:hover { background-color: #059669; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -183,7 +183,6 @@ def generate_code(name, job, city, addr, tel):
     except: return "<!-- Erreur Gen -->"
 
 def generate_prospection_content(name, type_content, link_url):
-    # Logique conditionnelle stricte : Si lien présent, on l'utilise. Sinon, on contourne.
     
     if type_content == "EMAIL":
         if link_url:
@@ -206,7 +205,7 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V22 (Fast Workflow)")
+st.title("LocalHunter V23 (Free Hosting)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -245,15 +244,15 @@ with tab1:
 
                 st.markdown("---")
                 
-                # Input Lien Unique par Prospect (pour éviter les confusions)
-                hosted_link = st.text_input("🔗 Lien Tiiny.host (ex: macon.tiiny.site)", key=f"lnk_{p.get('place_id')}")
+                # Input Lien Unique
+                hosted_link = st.text_input("🔗 Lien Hébergé (Static.app)", key=f"lnk_{p.get('place_id')}")
 
                 t_email, t_sms, t_script = st.tabs(["📧 Email", "📱 SMS", "📞 Téléphone"])
                 
                 with t_email:
                     if st.button("📝 Rédiger Email", key=f"gen_e_{p.get('place_id')}"):
                         body = generate_prospection_content(p.get('title'), "EMAIL", hosted_link)
-                        st.code(body, language="text") # Code block pour copier en 1 clic
+                        st.code(body, language="text")
                         
                         detected_email = p.get('email', "")
                         subject = urllib.parse.quote(f"Site web pour {p.get('title')}")
@@ -263,7 +262,7 @@ with tab1:
                 with t_sms:
                     if st.button("📱 Rédiger SMS", key=f"gen_s_{p.get('place_id')}"):
                         sms_txt = generate_prospection_content(p.get('title'), "SMS", hosted_link)
-                        st.code(sms_txt, language="text") # Copier en 1 clic
+                        st.code(sms_txt, language="text")
                 
                 with t_script:
                     if st.button("🗣️ Rédiger Script", key=f"gen_c_{p.get('place_id')}"):
@@ -276,10 +275,11 @@ with tab2:
     if 'final' in st.session_state:
         st.markdown("""
         <div class="step-box">
-            <b>🚀 ÉTAPE 1 : TÉLÉCHARGER & HÉBERGER</b><br>
-            1. Téléchargez le fichier ci-dessous.<br>
-            2. Ouvrez <a href="https://tiiny.host" target="_blank" class="tiiny-btn">Tiiny.host ↗</a><br>
-            3. Glissez le fichier, copiez le lien généré, et revenez dans l'onglet CHASSE pour l'envoyer.
+            <b>🚀 ÉTAPE 1 : HÉBERGEMENT GRATUIT (Alternative Tiiny)</b><br>
+            1. Téléchargez le fichier HTML.<br>
+            2. Ouvrez <a href="https://static.app" target="_blank" class="host-btn">STATIC.APP ↗</a> (Meilleure alternative gratuite).<br>
+            3. Si ça bloque, essayez <a href="https://surge.sh" target="_blank" class="host-btn">Surge.sh ↗</a> (Ligne de commande).<br>
+            4. Copiez le lien, revenez dans CHASSE et collez-le pour générer le SMS.
         </div>
         """, unsafe_allow_html=True)
         
