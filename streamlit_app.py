@@ -9,7 +9,7 @@ import urllib.parse
 import zipfile
 import io
 
-st.set_page_config(page_title="LocalHunter V29 (Zip Standard)", page_icon="📦", layout="wide")
+st.set_page_config(page_title="LocalHunter V30 (Stable UI)", page_icon="🎯", layout="wide")
 
 # CSS
 st.markdown("""
@@ -18,17 +18,7 @@ st.markdown("""
     .badge-none { background-color: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #ef4444; }
     .badge-weak { background-color: #ffedd5; color: #9a3412; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #f97316; }
     .badge-ok { background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; }
-    .step-box { background-color: #f0fdf4; border: 1px solid #16a34a; padding: 20px; border-radius: 10px; margin: 15px 0; }
-    .btn-link { 
-        display: inline-block; 
-        background-color: #16a34a; 
-        color: white !important; 
-        padding: 10px 20px; 
-        border-radius: 8px; 
-        text-decoration: none; 
-        font-weight: bold; 
-        margin-top: 10px;
-    }
+    .step-box { background-color: #f0f9ff; border: 2px solid #0ea5e9; padding: 20px; border-radius: 10px; margin: 15px 0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -66,8 +56,6 @@ def create_zip_archive(html_content):
     """Crée un ZIP standard compatible Netlify/Windows/Mac"""
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        # On s'assure que le fichier s'appelle bien index.html à la racine
-        # On encode le contenu en UTF-8 explicitement
         info = zipfile.ZipInfo("index.html")
         info.date_time = time.localtime(time.time())[:6]
         info.compress_type = zipfile.ZIP_DEFLATED
@@ -235,7 +223,7 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V29 (Zip Standard)")
+st.title("LocalHunter V30 (Stable UI)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -302,26 +290,24 @@ with tab2:
     st.header("🔧 Atelier & Publication")
     
     if st.session_state.final:
-        st.markdown("""
-        <div class="step-box">
-            <h3>📦 EXPORT ZIP (Format Universel)</h3>
-            <ol>
-                <li>Téléchargez le <b>DOSSIER ZIP</b> ci-dessous.</li>
-                <li>Ouvrez <a href="https://app.netlify.com/drop" target="_blank" class="btn-link">NETLIFY DROP ↗</a></li>
-                <li>Glissez le ZIP. C'est garanti à 100% car le fichier est normalisé.</li>
-            </ol>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("### 🌐 HÉBERGEMENT GRATUIT")
+        st.info("1. Téléchargez le ZIP ci-dessous.\n2. Cliquez sur 'OUVRIR NETLIFY'.\n3. Glissez le fichier ZIP sur la page qui s'ouvre.")
         
-        # BOUTON ZIP MAGIQUE V2 (Time & Info Fix)
+        # BOUTON ZIP MAGIQUE
         zip_data = create_zip_archive(st.session_state.final)
-        st.download_button(
-            label="📦 TÉLÉCHARGER LE DOSSIER ZIP (GARANTI)",
-            data=zip_data,
-            file_name="site_web.zip",
-            mime="application/zip",
-            use_container_width=True
-        )
+        c_dl, c_link = st.columns([1, 1])
+        
+        with c_dl:
+            st.download_button(
+                label="📦 1. TÉLÉCHARGER LE ZIP",
+                data=zip_data,
+                file_name="site_web.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
+        with c_link:
+            st.link_button("🚀 2. OUVRIR NETLIFY DROP", "https://app.netlify.com/drop", use_container_width=True)
+            
         st.divider()
 
     up_html = st.file_uploader("Charger HTML", type=['html'])
