@@ -5,16 +5,20 @@ import time
 import re
 import base64
 import hashlib
+import urllib.parse
 
-st.set_page_config(page_title="LocalHunter V19 (Final Stable)", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="LocalHunter V22 (Fast Workflow)", page_icon="⚡", layout="wide")
 
 # CSS
 st.markdown("""
 <style>
-    div.stButton > button:first-child { background-color: #0f172a; color: white; border-radius: 8px; font-weight: 600; }
+    div.stButton > button:first-child { background-color: #0f172a; color: white; border-radius: 6px; font-weight: 600; }
     .badge-none { background-color: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #ef4444; }
     .badge-weak { background-color: #ffedd5; color: #9a3412; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #f97316; }
     .badge-ok { background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; }
+    .step-box { background-color: #f8fafc; border: 1px dashed #94a3b8; padding: 15px; border-radius: 8px; margin: 10px 0; }
+    a.tiiny-btn { display: inline-block; background-color: #6366f1; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 10px; }
+    a.tiiny-btn:hover { background-color: #4f46e5; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -178,15 +182,31 @@ def generate_code(name, job, city, addr, tel):
         return clean_html_output(resp.choices[0].message.content)
     except: return "<!-- Erreur Gen -->"
 
-def generate_email_prospection(name, status):
-    context = "n'a pas de site web" if status == "NONE" else "a une visibilité limitée"
+def generate_prospection_content(name, type_content, link_url):
+    # Logique conditionnelle stricte : Si lien présent, on l'utilise. Sinon, on contourne.
+    
+    if type_content == "EMAIL":
+        if link_url:
+            prompt = f"Rédige un Email AIDA très court pour {name}. J'ai créé une maquette de leur site, voici le lien : {link_url}. Donne juste le corps du mail, pas de politesses inutiles."
+        else:
+            prompt = f"Rédige un Email AIDA très court pour {name} pour proposer une maquette de site web. Donne juste le corps du mail."
+            
+    elif type_content == "SMS":
+        if link_url:
+            prompt = f"Rédige un SMS pour {name} (max 160 caractères). 'Bonjour, j'ai fait une maquette de votre site : {link_url}. Qu'en pensez-vous ?'."
+        else:
+            prompt = f"Rédige un SMS pour {name} (max 160 caractères) pour proposer une démo de site web."
+            
+    elif type_content == "SCRIPT":
+        prompt = f"Script appel téléphonique direct pour {name}. But: avoir le 06 pour envoyer le lien par SMS. Pas de blabla."
+    
     try:
-        resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": f"Email court AIDA pour {name} ({context}). Propose maquette gratuite."}])
-        return resp.choices[0].message.content
-    except: return "Erreur Email"
+        resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
+        return resp.choices[0].message.content.replace('"', '') # Clean quotes
+    except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V19 (Final Stable)")
+st.title("LocalHunter V22 (Fast Workflow)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -205,9 +225,8 @@ with tab1:
     if 'prospects' in st.session_state and st.session_state.prospects:
         results = st.session_state.prospects
         none_cnt = len([x for x in results if x['site_quality'] == "NONE"])
-        weak_cnt = len([x for x in results if x['site_quality'] == "WEAK"])
         
-        st.info(f"🎯 CIBLES : {none_cnt} Sans Site | {weak_cnt} Site Faible | {len(results)} Total")
+        st.info(f"🎯 CIBLES : {none_cnt} Sans Site | {len(results)} Total")
         
         for p in results:
             q = p["site_quality"]
@@ -223,15 +242,48 @@ with tab1:
                             code = generate_code(p.get('title'), job, city, p.get('address'), p.get('phone'))
                             st.session_state['final'] = code
                             st.success("Fait ! Voir Atelier.")
-                with c_b:
-                    if st.button("📧 Email", key=f"e_{p.get('place_id')}"):
-                        st.text_area("Email", generate_email_prospection(p.get('title'), q))
+
+                st.markdown("---")
+                
+                # Input Lien Unique par Prospect (pour éviter les confusions)
+                hosted_link = st.text_input("🔗 Lien Tiiny.host (ex: macon.tiiny.site)", key=f"lnk_{p.get('place_id')}")
+
+                t_email, t_sms, t_script = st.tabs(["📧 Email", "📱 SMS", "📞 Téléphone"])
+                
+                with t_email:
+                    if st.button("📝 Rédiger Email", key=f"gen_e_{p.get('place_id')}"):
+                        body = generate_prospection_content(p.get('title'), "EMAIL", hosted_link)
+                        st.code(body, language="text") # Code block pour copier en 1 clic
+                        
+                        detected_email = p.get('email', "")
+                        subject = urllib.parse.quote(f"Site web pour {p.get('title')}")
+                        body_enc = urllib.parse.quote(body)
+                        st.markdown(f'<a href="mailto:{detected_email}?subject={subject}&body={body_enc}" target="_blank" style="background-color:#ea580c;color:white;padding:8px 16px;border-radius:6px;text-decoration:none;">🚀 Ouvrir Boite Mail</a>', unsafe_allow_html=True)
+
+                with t_sms:
+                    if st.button("📱 Rédiger SMS", key=f"gen_s_{p.get('place_id')}"):
+                        sms_txt = generate_prospection_content(p.get('title'), "SMS", hosted_link)
+                        st.code(sms_txt, language="text") # Copier en 1 clic
+                
+                with t_script:
+                    if st.button("🗣️ Rédiger Script", key=f"gen_c_{p.get('place_id')}"):
+                        script_txt = generate_prospection_content(p.get('title'), "SCRIPT", hosted_link)
+                        st.text_area("Script", script_txt, height=200)
 
 with tab2:
-    st.header("🔧 Atelier")
+    st.header("🔧 Atelier & Publication")
     
     if 'final' in st.session_state:
-        st.download_button("💾 TÉLÉCHARGER LE SITE", st.session_state['final'], "index.html", "text/html", use_container_width=True)
+        st.markdown("""
+        <div class="step-box">
+            <b>🚀 ÉTAPE 1 : TÉLÉCHARGER & HÉBERGER</b><br>
+            1. Téléchargez le fichier ci-dessous.<br>
+            2. Ouvrez <a href="https://tiiny.host" target="_blank" class="tiiny-btn">Tiiny.host ↗</a><br>
+            3. Glissez le fichier, copiez le lien généré, et revenez dans l'onglet CHASSE pour l'envoyer.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.download_button("💾 TÉLÉCHARGER LE SITE (index.html)", st.session_state['final'], "index.html", "text/html", use_container_width=True)
         st.divider()
 
     up_html = st.file_uploader("Charger HTML", type=['html'])
