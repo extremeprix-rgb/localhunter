@@ -7,7 +7,7 @@ import re
 import base64
 import hashlib
 
-st.set_page_config(page_title="LocalHunter V15 (Final)", page_icon="📍", layout="wide")
+st.set_page_config(page_title="LocalHunter V16 (Stable)", page_icon="📍", layout="wide")
 
 # CSS
 st.markdown("""
@@ -73,7 +73,7 @@ def surgical_email_config(html_content, email):
     else:
         return html_content.replace('<form', f'<form action="https://formsubmit.co/{email}"')
 
-# --- MOTEUR DE SCAN V15 (GPS LOCK) ---
+# --- MOTEUR DE SCAN ---
 
 def check_site_quality(url):
     if not url: return "NONE"
@@ -86,15 +86,12 @@ def smart_search(job, city, api_key, max_pages):
     all_results = []
     seen_ids = set()
     status_container = st.empty()
-    
-    # Variable pour stocker la "Zone Géographique" (ll parameter)
     gps_context = None 
 
     for page in range(max_pages):
         start_index = page * 20
         status_container.info(f"⏳ Scan Page {page + 1}/{max_pages}...")
         
-        # Paramètres de base
         params = {
             "engine": "google_maps",
             "q": f"{job} {city}",
@@ -106,7 +103,6 @@ def smart_search(job, city, api_key, max_pages):
             "api_key": api_key
         }
         
-        # Si on a trouvé le GPS à la page 1, on l'injecte pour les pages suivantes
         if gps_context and page > 0:
             params["ll"] = gps_context
         
@@ -114,22 +110,19 @@ def smart_search(job, city, api_key, max_pages):
             client_search = GoogleSearch(params)
             data = client_search.get_dict()
             
-            # Gestion erreurs API
             if "error" in data:
                 st.warning(f"Note SerpApi (Page {page+1}) : {data['error']}")
                 if "Missing location" in data['error']:
-                    st.error("⚠️ Impossible de paginer sans coordonnées GPS. Précisez la ville (ex: 'Lyon France').")
+                    st.error("⚠️ Impossible de paginer sans coordonnées GPS. Précisez la ville.")
                 break
             
-            # Extraction du GPS pour les pages suivantes (seulement au premier tour)
             if page == 0:
                 try:
                     meta_url = data.get("search_metadata", {}).get("google_maps_url", "")
                     match = re.search(r'@([-0-9.]+),([-0-9.]+),([0-9.]+)z', meta_url)
                     if match:
                         gps_context = f"@{match.group(1)},{match.group(2)},{match.group(3)}z"
-                except:
-                    pass
+                except: pass
 
             local_results = data.get("local_results", [])
             
@@ -143,7 +136,7 @@ def smart_search(job, city, api_key, max_pages):
                     all_results.append(res)
                     seen_ids.add(pid)
             
-            time.sleep(2) # Pause anti-blocage
+            time.sleep(2)
             
         except Exception as e:
             st.error(f"Erreur technique : {e}")
@@ -153,6 +146,73 @@ def smart_search(job, city, api_key, max_pages):
     time.sleep(2)
     status_container.empty()
     
-    # TRI
+    # TRI (C'est ici que ça plantait avant, corrigé maintenant)
     order = {"NONE": 0, "WEAK": 1, "OK": 2}
-    all_results.sort(key=lambda x: order[x["site
+    all_results.sort(key=lambda x: order[x["site_quality"]])
+    
+    return all_results
+
+# --- GENERATION ---
+def generate_code(name, job, city, addr, tel):
+    prompt = f"""
+    Agis comme un expert Web Designer. Crée un site One-Page HTML5 (TailwindCSS) pour {name} ({job}) à {city}.
+    Infos: {addr}, {tel}.
+    
+    IMAGES (Strictement <img src="...">) :
+    1. Hero: "https://loremflickr.com/1600/900/{job.replace(' ', ',')}?lock=1"
+    2. About: "https://loremflickr.com/800/800/{job.replace(' ', ',')}?lock=2"
+    3. Services: 3 images random lock=3,4,5.
+    
+    STRUCTURE :
+    - Navbar, Hero (H1+CTA), Confiance (Stats), About, Services (3 cartes), FAQ, Footer.
+    - Formulaire fonctionnel: <form action="https://formsubmit.co/votre-email@gmail.com" method="POST">
+    - Design : Moderne, épuré, ombres douces (shadow-lg), rounded-xl.
+    """
+    try:
+        resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
+        return clean_html_output(resp.choices[0].message.content)
+    except: return "<!-- Erreur Gen -->"
+
+def generate_email_prospection(name, status):
+    context = "n'a pas de site web" if status == "NONE" else "a une visibilité limitée"
+    try:
+        resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": f"Email court AIDA pour {name} ({context}). Propose maquette gratuite."}])
+        return resp.choices[0].message.content
+    except: return "Erreur Email"
+
+# --- UI ---
+st.title("LocalHunter V16 (Stable)")
+
+tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
+
+with tab1:
+    c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
+    with c1: job = st.text_input("Activité", "Maçon")
+    with c2: city = st.text_input("Ville", "Lyon")
+    with c3: pages = st.number_input("Pages (20 res/page)", 1, 10, 3)
+    with c4: 
+        st.write("")
+        st.write("")
+        if st.button("LANCER LE SCAN", use_container_width=True):
+            st.session_state.prospects = []
+            st.session_state.prospects = smart_search(job, city, serpapi_key, pages)
+
+    if 'prospects' in st.session_state and st.session_state.prospects:
+        results = st.session_state.prospects
+        none_cnt = len([x for x in results if x['site_quality'] == "NONE"])
+        weak_cnt = len([x for x in results if x['site_quality'] == "WEAK"])
+        
+        st.info(f"🎯 CIBLES : {none_cnt} Sans Site | {weak_cnt} Site Faible | {len(results)} Total")
+        
+        for p in results:
+            q = p["site_quality"]
+            badge = '<span class="badge-none">🔴 PAS DE SITE</span>' if q == "NONE" else ('<span class="badge-weak">🟠 SITE FAIBLE</span>' if q == "WEAK" else '<span class="badge-ok">🟢 OK</span>')
+            
+            with st.expander(f"{'🔴' if q=='NONE' else ('🟠' if q=='WEAK' else '🟢')} {p.get('title')} - {p.get('address')}"):
+                st.markdown(f"**Statut Web :** {badge} <br> **Tel:** {p.get('phone')}", unsafe_allow_html=True)
+                
+                c_a, c_b = st.columns(2)
+                with c_a:
+                    if st.button("⚡ Générer Site", key=f"g_{p.get('place_id')}"):
+                        with st.spinner("Création..."):
+                            code = generate_code(p.get('
