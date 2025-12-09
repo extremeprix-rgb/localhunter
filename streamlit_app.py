@@ -6,8 +6,10 @@ import re
 import base64
 import hashlib
 import urllib.parse
+import zipfile
+import io
 
-st.set_page_config(page_title="LocalHunter V26 (Netlify Fix)", page_icon="🌐", layout="wide")
+st.set_page_config(page_title="LocalHunter V27 (Zip Export)", page_icon="📦", layout="wide")
 
 # CSS
 st.markdown("""
@@ -58,6 +60,13 @@ def clean_html_output(raw_text):
     end = text.find("</html>")
     if start != -1 and end != -1: return text[start : end + 7]
     return text
+
+def create_zip_archive(html_content):
+    """Crée un ZIP contenant index.html à la racine pour Netlify"""
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        zip_file.writestr("index.html", html_content)
+    return zip_buffer.getvalue()
 
 def image_to_base64(uploaded_file):
     if uploaded_file is None: return None
@@ -220,7 +229,7 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V26 (Netlify Fix)")
+st.title("LocalHunter V27 (Zip Export)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -233,12 +242,10 @@ with tab1:
         st.write("")
         st.write("")
         if st.button("LANCER LE SCAN", use_container_width=True):
-            # ON NE VIDE PAS LA LISTE SI LE SCAN ECHOUE, MAIS ON LA REMPLACE SI OK
             results = smart_search(job, city, serpapi_key, pages)
             if results:
                 st.session_state.prospects = results
 
-    # AFFICHAGE PERSISTANT (Basé sur session_state)
     if st.session_state.prospects:
         results = st.session_state.prospects
         none_cnt = len([x for x in results if x['site_quality'] == "NONE"])
@@ -257,13 +264,10 @@ with tab1:
                     if st.button("⚡ Générer Site", key=f"g_{p.get('place_id')}"):
                         with st.spinner("Création..."):
                             code = generate_code(p.get('title'), job, city, p.get('address'), p.get('phone'))
-                            st.session_state.final = code # Sauvegarde dans state persistent
+                            st.session_state.final = code 
                             st.success("Fait ! Voir Atelier.")
 
                 st.markdown("---")
-                
-                # Input Lien Unique
-                # On utilise st.session_state pour mémoriser le lien aussi si besoin, mais ici simple input
                 hosted_link = st.text_input("🔗 Lien Hébergé (Netlify)", key=f"lnk_{p.get('place_id')}")
 
                 t_email, t_sms, t_script = st.tabs(["📧 Email", "📱 SMS", "📞 Téléphone"])
@@ -291,26 +295,33 @@ with tab1:
 with tab2:
     st.header("🔧 Atelier & Publication")
     
-    # On vérifie si 'final' existe dans la session
     if st.session_state.final:
         st.markdown("""
         <div class="step-box">
-            <h3>🌐 HÉBERGEMENT NETLIFY (SANS ERREUR)</h3>
+            <h3>🌐 HÉBERGEMENT GARANTI (ZIP)</h3>
             <ol>
-                <li>Cliquez sur <b>TÉLÉCHARGER LE SITE</b> (le fichier s'appellera <code>index.html</code>).</li>
+                <li>Téléchargez le <b>DOSSIER ZIP</b> ci-dessous.</li>
                 <li>Ouvrez <a href="https://app.netlify.com/drop" target="_blank" class="btn-link">NETLIFY DROP ↗</a></li>
-                <li>⚠️ <b>IMPORTANT : Glissez DIRECTEMENT le fichier <code>index.html</code> (et non un dossier).</b></li>
-                <li>Votre site sera en ligne en 2 secondes. Copiez le lien.</li>
+                <li><b>Glissez le fichier ZIP</b> directement sur leur site.</li>
+                <li>Ça marchera à 100% car le fichier s'appelle bien index.html à l'intérieur.</li>
             </ol>
         </div>
         """, unsafe_allow_html=True)
         
-        st.download_button("💾 TÉLÉCHARGER LE SITE (index.html)", st.session_state.final, "index.html", "text/html", use_container_width=True)
+        # BOUTON ZIP MAGIQUE
+        zip_data = create_zip_archive(st.session_state.final)
+        st.download_button(
+            label="📦 TÉLÉCHARGER LE DOSSIER ZIP (Recommandé)",
+            data=zip_data,
+            file_name="site_web.zip",
+            mime="application/zip",
+            use_container_width=True
+        )
+        st.download_button("📄 Télécharger seulement index.html", st.session_state.final, "index.html", "text/html", use_container_width=True)
         st.divider()
 
     up_html = st.file_uploader("Charger HTML", type=['html'])
     if up_html:
-        # Quand on upload, on met à jour la session state
         string_data = up_html.getvalue().decode("utf-8")
         st.session_state.final = string_data
 
@@ -328,8 +339,8 @@ with tab2:
                     b64 = image_to_base64(up_img)
                     if b64:
                         new_html = replace_specific_image(html, b64, idx)
-                        st.session_state.final = new_html # Mise à jour state
-                        st.rerun() # Refresh pour voir le changement
+                        st.session_state.final = new_html 
+                        st.rerun()
         
         with c2:
             st.subheader("✍️ Texte & Email")
