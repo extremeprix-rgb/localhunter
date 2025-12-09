@@ -9,7 +9,7 @@ import urllib.parse
 import zipfile
 import io
 
-st.set_page_config(page_title="LocalHunter V30 (Stable UI)", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="LocalHunter V31 (MIME & Perms Fix)", page_icon="🌐", layout="wide")
 
 # CSS
 st.markdown("""
@@ -44,21 +44,31 @@ if 'final' not in st.session_state:
 # --- FONCTIONS TECHNIQUES ---
 
 def clean_html_output(raw_text):
+    # Nettoyage brutal des balises Markdown
     text = raw_text.replace("```html", "").replace("```", "").strip()
-    if "<meta charset=" not in text:
-        text = text.replace("<head>", '<head>\n<meta charset="UTF-8">')
-    start = text.find("<!DOCTYPE html>")
-    end = text.find("</html>")
-    if start != -1 and end != -1: return text[start : end + 7]
+    
+    # Force DOCTYPE au tout début (Crucial pour l'affichage navigateur)
+    if "<!DOCTYPE html>" not in text[:50].upper():
+        text = "<!DOCTYPE html>\n" + text
+    
+    # Force UTF-8 Meta
+    if "charset=" not in text.lower():
+        text = text.replace("<head>", '<head>\n<meta charset="UTF-8">', 1)
+        
     return text
 
 def create_zip_archive(html_content):
-    """Crée un ZIP standard compatible Netlify/Windows/Mac"""
+    """Crée un ZIP avec permissions UNIX 644 pour forcer Netlify à lire le HTML"""
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         info = zipfile.ZipInfo("index.html")
         info.date_time = time.localtime(time.time())[:6]
         info.compress_type = zipfile.ZIP_DEFLATED
+        
+        # PERMISSION FIX : 0o100644 (Fichier régulier, Lecture/Ecriture propriétaire, Lecture groupe/autres)
+        # Cela dit à Netlify "Ceci est un fichier web valide"
+        info.external_attr = 0o100644 << 16 
+        
         zip_file.writestr(info, html_content.encode('utf-8'))
     return zip_buffer.getvalue()
 
@@ -223,7 +233,7 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V30 (Stable UI)")
+st.title("LocalHunter V31 (MIME & Perms Fix)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
