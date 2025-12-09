@@ -7,7 +7,7 @@ import base64
 import hashlib
 import urllib.parse
 
-st.set_page_config(page_title="LocalHunter V25 (Persistent State)", page_icon="💾", layout="wide")
+st.set_page_config(page_title="LocalHunter V26 (Netlify Fix)", page_icon="🌐", layout="wide")
 
 # CSS
 st.markdown("""
@@ -16,10 +16,10 @@ st.markdown("""
     .badge-none { background-color: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #ef4444; }
     .badge-weak { background-color: #ffedd5; color: #9a3412; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #f97316; }
     .badge-ok { background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; }
-    .step-box { background-color: #f0fdf4; border: 1px solid #22c55e; padding: 20px; border-radius: 10px; margin: 15px 0; }
+    .step-box { background-color: #e0f2fe; border: 1px solid #0284c7; padding: 20px; border-radius: 10px; margin: 15px 0; }
     .btn-link { 
         display: inline-block; 
-        background-color: #2563eb; 
+        background-color: #0284c7; 
         color: white !important; 
         padding: 10px 20px; 
         border-radius: 8px; 
@@ -27,7 +27,7 @@ st.markdown("""
         font-weight: bold; 
         margin-top: 10px;
     }
-    .btn-link:hover { background-color: #1d4ed8; }
+    .btn-link:hover { background-color: #0369a1; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -220,7 +220,7 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V25 (Persistent State)")
+st.title("LocalHunter V26 (Netlify Fix)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -295,14 +295,13 @@ with tab2:
     if st.session_state.final:
         st.markdown("""
         <div class="step-box">
-            <h3>🌐 HÉBERGEMENT GRATUIT (NETLIFY DROP)</h3>
+            <h3>🌐 HÉBERGEMENT NETLIFY (SANS ERREUR)</h3>
             <ol>
-                <li>Téléchargez votre fichier <code>index.html</code> via le bouton ci-dessous.</li>
-                <li>Cliquez sur le bouton bleu pour ouvrir Netlify Drop.</li>
-                <li><b>Glissez simplement le fichier index.html</b> dans la zone encadrée sur leur site.</li>
-                <li>Copiez le lien qu'ils vous donnent (ex: <i>jolly-site.netlify.app</i>).</li>
+                <li>Cliquez sur <b>TÉLÉCHARGER LE SITE</b> (le fichier s'appellera <code>index.html</code>).</li>
+                <li>Ouvrez <a href="https://app.netlify.com/drop" target="_blank" class="btn-link">NETLIFY DROP ↗</a></li>
+                <li>⚠️ <b>IMPORTANT : Glissez DIRECTEMENT le fichier <code>index.html</code> (et non un dossier).</b></li>
+                <li>Votre site sera en ligne en 2 secondes. Copiez le lien.</li>
             </ol>
-            <a href="https://app.netlify.com/drop" target="_blank" class="btn-link">OUVRIR NETLIFY DROP ↗</a>
         </div>
         """, unsafe_allow_html=True)
         
