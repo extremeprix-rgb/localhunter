@@ -7,13 +7,14 @@ import re
 import base64
 import hashlib
 
-st.set_page_config(page_title="LocalHunter V11 (Base64)", page_icon="🏆", layout="wide")
+st.set_page_config(page_title="LocalHunter V12 (SEO & Design)", page_icon="💎", layout="wide")
 
-# CSS
+# CSS Interface Streamlit
 st.markdown("""
 <style>
-    div.stButton > button:first-child { background-color: #000000; color: white; border-radius: 6px; font-weight: 600; }
-    .stTextArea textarea { font-family: monospace; font-size: 12px; }
+    div.stButton > button:first-child { background-color: #0f172a; color: white; border-radius: 8px; font-weight: 600; padding: 0.5rem 1rem; }
+    .stTextArea textarea { font-family: 'Courier New', monospace; font-size: 12px; }
+    h1 { color: #0f172a; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -36,12 +37,10 @@ def clean_html_output(raw_text):
     return text
 
 def image_to_base64(uploaded_file):
-    """Transforme une image en chaîne de caractères pour l'incruster dans le HTML"""
     if uploaded_file is None: return None
     try:
         bytes_data = uploaded_file.getvalue()
         b64_str = base64.b64encode(bytes_data).decode()
-        # On devine le mime type (jpg/png)
         mime = "image/png" if uploaded_file.name.lower().endswith(".png") else "image/jpeg"
         return f"data:{mime};base64,{b64_str}"
     except Exception as e:
@@ -49,35 +48,23 @@ def image_to_base64(uploaded_file):
         return None
 
 def get_images_from_html(html_content):
-    """Trouve toutes les URLs d'images (src=) même sur plusieurs lignes"""
-    # Pattern amélioré avec re.DOTALL implicite via le flag re.S dans la fonction appelante
-    # On cherche <img ... src="URL" ... >
     pattern = r'<img\s+[^>]*?src=["\']([^"\']*?)["\']'
     return [m.group(1) for m in re.finditer(pattern, html_content, re.IGNORECASE | re.DOTALL)]
 
 def replace_specific_image(html_content, image_data, index):
-    """Remplace une image spécifique (par son index) par la version Base64"""
-    # Regex robuste qui capture tout le tag img, peu importe les sauts de ligne
     pattern = r'(<img\s+[^>]*?src=["\'])([^"\']*?)(["\'][^>]*?>)'
     matches = list(re.finditer(pattern, html_content, re.IGNORECASE | re.DOTALL))
-    
     if 0 <= index < len(matches):
         m = matches[index]
         start = m.start()
         end = m.end()
-        
-        # On reconstruit le tag avec la nouvelle data Base64
-        # On garde le début (<img class="..." src=") et la fin (" ... >)
         new_tag = f"{m.group(1)}{image_data}{m.group(3)}"
-        
         return html_content[:start] + new_tag + html_content[end:]
-    
     return html_content
 
 def surgical_email_config(html_content, email):
     pattern = r'action=["\']https://formsubmit\.co/[^"\']*["\']'
     replacement = f'action="https://formsubmit.co/{email}"'
-    
     if re.search(pattern, html_content):
         return re.sub(pattern, replacement, html_content)
     else:
@@ -126,28 +113,42 @@ def smart_search(job, city, api_key, max_pages):
 def generate_code(name, job, city, addr, tel):
     ts = int(time.time())
     
-    # Prompt STRICT pour forcer les balises <img> partout
+    # Prompt SEO & DESIGN MODERN
     prompt = f"""
-    Crée un site One-Page HTML (TailwindCSS) COMPLET pour {name} ({job}) à {city}.
+    Agis comme un expert Web Designer & SEO. Crée un site One-Page HTML5 moderne (TailwindCSS) pour {name} ({job}) à {city}.
     Infos: Adresse: {addr}, Tel: {tel}.
     
-    RÈGLE ABSOLUE IMAGES : 
-    N'utilise JAMAIS de 'background-image' CSS. 
-    Utilise UNIQUEMENT des balises <img src="..."> pour TOUTES les images, y compris le Hero Header.
-    
-    LISTE DES IMAGES (5 obligatoires) :
-    1. Hero Header (Doit être une balise <img> en absolute position) : src="https://loremflickr.com/1200/800/{job.replace(' ', ',')}?lock=1"
-    2. Section Histoire : src="https://loremflickr.com/800/600/{job.replace(' ', ',')}?lock=2"
-    3. Service 1 : src="https://loremflickr.com/400/300/{job.replace(' ', ',')}?lock=3"
-    4. Service 2 : src="https://loremflickr.com/400/300/{job.replace(' ', ',')}?lock=4"
-    5. Service 3 : src="https://loremflickr.com/400/300/{job.replace(' ', ',')}?lock=5"
-    
-    STRUCTURE :
-    - Navbar
-    - Hero (<img> en fond via class="absolute inset-0 w-full h-full object-cover")
-    - Histoire
-    - Services (3 cartes)
-    - Contact (<form action="https://formsubmit.co/votre-email@gmail.com" method="POST">)
+    🎨 DESIGN & STYLE :
+    - Utilise une police moderne (Google Fonts 'Inter' ou 'Poppins').
+    - Palette de couleurs : Blanc, Gris ardoise (Slate-900), et une couleur d'accentuation forte (Blue-600 ou Indigo-600).
+    - Utilise des ombres douces (shadow-xl), des coins arrondis (rounded-2xl) et des dégradés subtils.
+    - Layout aéré, beaucoup d'espace blanc (padding generoux).
+
+    🖼️ RÈGLE ABSOLUE IMAGES (Pour compatibilité outil de remplacement) :
+    - N'utilise JAMAIS 'background-image' en CSS. 
+    - Utilise UNIQUEMENT des balises <img src="..." class="object-cover ...">.
+    - URLs obligatoires :
+      1. Hero (Pleine largeur absolute) : src="https://loremflickr.com/1600/900/{job.replace(' ', ',')}?lock=1"
+      2. About (Carrée) : src="https://loremflickr.com/800/800/{job.replace(' ', ',')}?lock=2"
+      3. Service 1 : src="https://loremflickr.com/600/400/{job.replace(' ', ',')}?lock=3"
+      4. Service 2 : src="https://loremflickr.com/600/400/{job.replace(' ', ',')}?lock=4"
+      5. Service 3 : src="https://loremflickr.com/600/400/{job.replace(' ', ',')}?lock=5"
+
+    📝 STRUCTURE SEO & CONTENU RICHE :
+    1. <head> : Ajoute meta description optimisée SEO locale ("Meilleur {job} à {city}..."), Title pertinent.
+    2. Navbar Sticky : Logo (Texte gras), Liens (Accueil, Services, FAQ, Contact), Bouton CTA "Devis Gratuit".
+    3. Hero Section : Titre H1 accrocheur ("L'expert {job} de référence à {city}"), Sous-titre persuasif, CTA, Image de fond sombre avec overlay.
+    4. Section "Confiance" (Barre de stats) : "10+ Années d'expérience", "500+ Chantiers", "100% Satisfait".
+    5. Section "À Propos" : Titre H2. Texte de 150 mots sur l'expertise, le sérieux, l'ancrage local à {city}. Image à droite.
+    6. Section "Nos Services" : 3 Cartes modernes (Ombre au survol). Titre H3 + Description détaillée de 3 lignes par service.
+    7. Section "Pourquoi Nous ?" : Liste à puces avec icones (FontAwesome ou SVG inline) : Devis rapide, Garantie décennale (si applicable), Prix transparents.
+    8. Section FAQ (Accordéon ou Grille) : 3 questions fréquentes pour ce métier avec réponses rassurantes.
+    9. Section Témoignages : 2 avis clients fictifs avec étoiles ⭐⭐⭐⭐⭐.
+    10. Footer : Mentions légales, Copyright, Adresse complète, Liens SEO.
+
+    TECHNIQUE :
+    - Formulaire : <form action="https://formsubmit.co/votre-email@gmail.com" method="POST" class="bg-white p-8 rounded-2xl shadow-lg">
+    - Pas de Markdown, donne uniquement le code HTML brut.
     """
     try:
         resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
@@ -156,71 +157,61 @@ def generate_code(name, job, city, addr, tel):
 
 def generate_email_prospection(name):
     try:
-        resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": f"Email AIDA pour {name}."}])
+        resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": f"Rédige un Email de prospection à froid (Cold Emailing) méthode AIDA pour {name}. Ton court, professionnel, qui propose de voir la maquette du site gratuitement."}])
         return resp.choices[0].message.content
     except: return "Erreur Email"
 
 # --- INTERFACE ---
-st.title("LocalHunter V11 (Images Incassables Multiples)")
+st.title("LocalHunter V12 (SEO & Design Pro)")
 
-tab1, tab2 = st.tabs(["CHASSE", "ATELIER (Customisation)"])
+tab1, tab2 = st.tabs(["🕵️ CHASSE (Scan & Gen)", "🎨 ATELIER (Custom & Images)"])
 
 with tab1:
     c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
-    with c1: job = st.text_input("Activité", "Maçon")
-    with c2: city = st.text_input("Ville", "Bordeaux")
-    with c3: pages = st.number_input("Pages", 1, 5, 2)
+    with c1: job = st.text_input("Activité", "Rénovation")
+    with c2: city = st.text_input("Ville", "Lyon")
+    with c3: pages = st.number_input("Pages Google", 1, 3, 1)
     with c4: 
         st.write("")
         st.write("")
-        if st.button("SCAN", use_container_width=True):
+        if st.button("LANCER SCAN", use_container_width=True):
             st.session_state.prospects = []
             raw = smart_search(job, city, serpapi_key, pages)
-            clean = [r for r in raw if "website" not in r]
+            clean = [r for r in raw if "website" not in r] # Filtre ceux qui n'ont pas de site
             st.session_state.prospects = clean
             st.session_state.stats = (len(raw), len(clean))
 
     if 'prospects' in st.session_state:
         if 'stats' in st.session_state:
             tot, kep = st.session_state.stats
-            st.info(f"📊 {tot} analysés → {kep} sans site.")
+            st.info(f"📊 Résultat du scan : {tot} fiches trouvées, dont {kep} SANS site web (Vos cibles !).")
             
         for p in st.session_state.prospects:
             with st.expander(f"📍 {p.get('title')} ({p.get('address')})"):
                 c_a, c_b = st.columns([1, 2])
                 pid = p.get('place_id')
                 with c_a:
-                    if st.button("⚡ Site", key=f"g_{pid}"):
-                        code = generate_code(p.get('title'), job, city, p.get('address'), p.get('phone'))
-                        st.session_state[f"h_{pid}"] = code
-                        st.session_state['final'] = code
-                        st.success("Site généré ! Allez dans l'onglet Atelier.")
-                    if st.button("📧 Email", key=f"m_{pid}"):
+                    if st.button("⚡ Générer Site Pro", key=f"g_{pid}"):
+                        with st.spinner("Rédaction du contenu SEO et Design en cours..."):
+                            code = generate_code(p.get('title'), job, city, p.get('address'), p.get('phone'))
+                            st.session_state[f"h_{pid}"] = code
+                            st.session_state['final'] = code # Envoi auto vers Atelier
+                            st.success("Site créé ! Allez dans l'Atelier.")
+                    if st.button("📧 Email d'approche", key=f"m_{pid}"):
                         st.session_state[f"e_{pid}"] = generate_email_prospection(p.get('title'))
                 with c_b:
                     if f"h_{pid}" in st.session_state:
-                        st.text_area("Code", st.session_state[f"h_{pid}"], height=100)
+                        st.text_area("Code HTML", st.session_state[f"h_{pid}"], height=100)
                     if f"e_{pid}" in st.session_state:
-                        st.text_area("Mail", st.session_state[f"e_{pid}"])
+                        st.text_area("Brouillon Email", st.session_state[f"e_{pid}"])
 
 with tab2:
-    st.header("🔧 Customisation Pro")
+    st.header("🔧 Atelier de Finition")
     
-    # Upload HTML
-    up_html = st.file_uploader("1. Charger le fichier HTML (ou utilisez celui généré)", type=['html'])
-    
-    if up_html:
-        file_hash = hashlib.md5(up_html.getvalue()).hexdigest()
-        if 'current_file_hash' not in st.session_state or st.session_state['current_file_hash'] != file_hash:
-            st.session_state['final'] = up_html.getvalue().decode("utf-8")
-            st.session_state['current_file_hash'] = file_hash
-            st.success("Nouveau fichier chargé !")
-
+    # Bouton de téléchargement GLOBAL (Toujours visible si un site existe)
     if 'final' in st.session_state:
-        
-        # --- BOUTON DE TÉLÉCHARGEMENT PRINCIPAL (Placé en haut pour fiabilité) ---
         st.download_button(
-            label="💾 TÉLÉCHARGER LE SITE FINAL (index.html)", 
+            label="💾 TÉLÉCHARGER LE SITE COMPLET (index.html)", 
             data=st.session_state['final'],
             file_name="index.html",
             mime="text/html",
@@ -228,61 +219,78 @@ with tab2:
         )
         st.divider()
 
+    # Upload HTML
+    up_html = st.file_uploader("Charger un fichier HTML (si pas généré à l'instant)", type=['html'])
+    
+    if up_html:
+        file_hash = hashlib.md5(up_html.getvalue()).hexdigest()
+        if 'current_file_hash' not in st.session_state or st.session_state['current_file_hash'] != file_hash:
+            st.session_state['final'] = up_html.getvalue().decode("utf-8")
+            st.session_state['current_file_hash'] = file_hash
+            st.success("Fichier chargé.")
+
+    if 'final' in st.session_state:
         current_html = st.session_state['final']
         
-        col_img, col_mail = st.columns(2)
+        col_img, col_text = st.columns([1, 1])
         
         # --- IMAGES ---
         with col_img:
-            st.subheader("🖼️ Remplacer une image")
+            st.subheader("🖼️ Remplacement Images")
+            st.caption("Changez les images génériques par les photos du client (Camion, Équipe...).")
+            
             images_found = get_images_from_html(current_html)
             
             if not images_found:
-                st.warning("Aucune balise <img> détectée (essayez de régénérer le site).")
+                st.warning("Aucune image modifiable trouvée.")
             else:
-                # Menu déroulant
-                img_options = {i: f"Image #{i+1} : {url[:30]}..." for i, url in enumerate(images_found)}
+                img_options = {i: f"Image #{i+1} : {url[-20:]}..." for i, url in enumerate(images_found)}
                 selected_index = st.selectbox(
-                    "Choisir l'image à modifier :", 
+                    "Choisir l'emplacement :", 
                     options=list(img_options.keys()),
                     format_func=lambda x: img_options[x]
                 )
                 
-                # Preview de l'image sélectionnée (si c'est une URL web)
-                selected_url = images_found[selected_index]
-                if selected_url.startswith("http"):
-                    st.image(selected_url, caption="Image actuelle", width=150)
+                # Preview Miniature
+                try:
+                    url_preview = images_found[selected_index]
+                    if url_preview.startswith("http"):
+                        st.image(url_preview, caption="Actuelle", width=200)
+                except: pass
                 
-                up_img = st.file_uploader("Charger votre nouvelle image", type=['jpg', 'png', 'jpeg'], key=f"u_{selected_index}")
+                up_img = st.file_uploader("Votre photo (JPG/PNG)", type=['jpg', 'png', 'jpeg'], key=f"u_{selected_index}")
                 
-                if up_img and st.button("Fusionner cette image"):
+                if up_img and st.button("Fusionner l'image", use_container_width=True):
                     b64_img = image_to_base64(up_img)
                     if b64_img:
                         new_html = replace_specific_image(current_html, b64_img, selected_index)
                         st.session_state['final'] = new_html
-                        st.success("✅ Image remplacée ! (L'aperçu se met à jour ci-dessous)")
+                        st.success("✅ Remplacée ! (Regardez l'aperçu en bas)")
                         st.rerun()
 
-        # --- EMAIL ---
-        with col_mail:
-            st.subheader("📧 Configurer Email")
-            client_email = st.text_input("Email de réception du formulaire :")
-            if st.button("Valider Email"):
-                if "@" in client_email:
-                    new_html = surgical_email_config(current_html, client_email)
-                    st.session_state['final'] = new_html
-                    st.success("Email configuré !")
+        # --- TEXTE & EMAIL ---
+        with col_text:
+            st.subheader("✍️ Contenu & Contact")
+            
+            with st.expander("Configuration Email (Formulaire)"):
+                client_email = st.text_input("Email du client (pour recevoir les devis) :")
+                if st.button("Valider Email"):
+                    if "@" in client_email:
+                        new_html = surgical_email_config(current_html, client_email)
+                        st.session_state['final'] = new_html
+                        st.success("Formulaire connecté !")
+                        st.rerun()
+            
+            with st.expander("Éditeur Rapide (Code HTML)"):
+                edited_html = st.text_area("Code", value=current_html, height=200)
+                if st.button("Sauvegarder les textes"):
+                    st.session_state['final'] = edited_html
+                    st.success("Mis à jour !")
                     st.rerun()
 
-        # --- TEXTE ---
-        with st.expander("✏️ Éditer le texte manuellement"):
-            edited_html = st.text_area("Code HTML", value=current_html, height=200)
-            if st.button("Sauvegarder Texte"):
-                st.session_state['final'] = edited_html
-                st.rerun()
-
-        st.markdown("### 👁️ Aperçu du Site")
+        st.markdown("---")
+        st.subheader("👁️ Aperçu en direct")
         st.components.v1.html(st.session_state['final'], height=800, scrolling=True)
     
     else:
-        st.info("👈 Commencez par scanner et générer un site dans l'onglet CHASSE.")
+        st.info("👈 Commencez par l'onglet CHASSE pour trouver un client et créer son site.")
