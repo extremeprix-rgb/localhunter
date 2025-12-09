@@ -7,7 +7,7 @@ import base64
 import hashlib
 import urllib.parse
 
-st.set_page_config(page_title="LocalHunter V24 (Netlify Drop)", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="LocalHunter V25 (Persistent State)", page_icon="💾", layout="wide")
 
 # CSS
 st.markdown("""
@@ -43,6 +43,12 @@ except:
 if not serpapi_key:
     st.error("⚠️ ERREUR CRITIQUE : La clé SERPAPI_KEY est manquante.")
     st.stop()
+
+# --- INITIALISATION STATE ---
+if 'prospects' not in st.session_state:
+    st.session_state.prospects = []
+if 'final' not in st.session_state:
+    st.session_state.final = ""
 
 # --- FONCTIONS TECHNIQUES ---
 
@@ -214,7 +220,7 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V24 (Netlify Drop)")
+st.title("LocalHunter V25 (Persistent State)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -227,14 +233,17 @@ with tab1:
         st.write("")
         st.write("")
         if st.button("LANCER LE SCAN", use_container_width=True):
-            st.session_state.prospects = []
-            st.session_state.prospects = smart_search(job, city, serpapi_key, pages)
+            # ON NE VIDE PAS LA LISTE SI LE SCAN ECHOUE, MAIS ON LA REMPLACE SI OK
+            results = smart_search(job, city, serpapi_key, pages)
+            if results:
+                st.session_state.prospects = results
 
-    if 'prospects' in st.session_state and st.session_state.prospects:
+    # AFFICHAGE PERSISTANT (Basé sur session_state)
+    if st.session_state.prospects:
         results = st.session_state.prospects
         none_cnt = len([x for x in results if x['site_quality'] == "NONE"])
         
-        st.info(f"🎯 CIBLES : {none_cnt} Sans Site | {len(results)} Total")
+        st.info(f"🎯 CIBLES EN MÉMOIRE : {none_cnt} Sans Site | {len(results)} Total")
         
         for p in results:
             q = p["site_quality"]
@@ -248,13 +257,14 @@ with tab1:
                     if st.button("⚡ Générer Site", key=f"g_{p.get('place_id')}"):
                         with st.spinner("Création..."):
                             code = generate_code(p.get('title'), job, city, p.get('address'), p.get('phone'))
-                            st.session_state['final'] = code
+                            st.session_state.final = code # Sauvegarde dans state persistent
                             st.success("Fait ! Voir Atelier.")
 
                 st.markdown("---")
                 
                 # Input Lien Unique
-                hosted_link = st.text_input("🔗 Lien Hébergé (Netlify/Static)", key=f"lnk_{p.get('place_id')}")
+                # On utilise st.session_state pour mémoriser le lien aussi si besoin, mais ici simple input
+                hosted_link = st.text_input("🔗 Lien Hébergé (Netlify)", key=f"lnk_{p.get('place_id')}")
 
                 t_email, t_sms, t_script = st.tabs(["📧 Email", "📱 SMS", "📞 Téléphone"])
                 
@@ -281,11 +291,11 @@ with tab1:
 with tab2:
     st.header("🔧 Atelier & Publication")
     
-    if 'final' in st.session_state:
+    # On vérifie si 'final' existe dans la session
+    if st.session_state.final:
         st.markdown("""
         <div class="step-box">
-            <h3>🌐 HÉBERGEMENT GRATUIT (100% FIABLE)</h3>
-            <p>La meilleure méthode est d'utiliser <b>Netlify Drop</b>. C'est le standard pro gratuit.</p>
+            <h3>🌐 HÉBERGEMENT GRATUIT (NETLIFY DROP)</h3>
             <ol>
                 <li>Téléchargez votre fichier <code>index.html</code> via le bouton ci-dessous.</li>
                 <li>Cliquez sur le bouton bleu pour ouvrir Netlify Drop.</li>
@@ -296,18 +306,17 @@ with tab2:
         </div>
         """, unsafe_allow_html=True)
         
-        st.download_button("💾 TÉLÉCHARGER LE SITE (index.html)", st.session_state['final'], "index.html", "text/html", use_container_width=True)
+        st.download_button("💾 TÉLÉCHARGER LE SITE (index.html)", st.session_state.final, "index.html", "text/html", use_container_width=True)
         st.divider()
 
     up_html = st.file_uploader("Charger HTML", type=['html'])
     if up_html:
-        h = hashlib.md5(up_html.getvalue()).hexdigest()
-        if st.session_state.get('chash') != h:
-            st.session_state['final'] = up_html.getvalue().decode("utf-8")
-            st.session_state['chash'] = h
+        # Quand on upload, on met à jour la session state
+        string_data = up_html.getvalue().decode("utf-8")
+        st.session_state.final = string_data
 
-    if 'final' in st.session_state:
-        html = st.session_state['final']
+    if st.session_state.final:
+        html = st.session_state.final
         c1, c2 = st.columns(2)
         
         with c1:
@@ -319,20 +328,23 @@ with tab2:
                 if up_img and st.button("Remplacer"):
                     b64 = image_to_base64(up_img)
                     if b64:
-                        st.session_state['final'] = replace_specific_image(html, b64, idx)
-                        st.rerun()
+                        new_html = replace_specific_image(html, b64, idx)
+                        st.session_state.final = new_html # Mise à jour state
+                        st.rerun() # Refresh pour voir le changement
         
         with c2:
             st.subheader("✍️ Texte & Email")
             em = st.text_input("Email Client")
             if st.button("Configurer Email"):
                 if "@" in em:
-                    st.session_state['final'] = surgical_email_config(html, em)
+                    new_html = surgical_email_config(html, em)
+                    st.session_state.final = new_html
                     st.success("OK")
+                    st.rerun()
             
             new_txt = st.text_area("Editer HTML", html, height=200)
             if st.button("Sauvegarder"):
-                st.session_state['final'] = new_txt
+                st.session_state.final = new_txt
                 st.rerun()
 
-        st.components.v1.html(st.session_state['final'], height=800, scrolling=True)
+        st.components.v1.html(st.session_state.final, height=800, scrolling=True)
