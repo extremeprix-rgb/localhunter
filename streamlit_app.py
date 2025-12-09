@@ -7,7 +7,7 @@ import re
 import base64
 import hashlib
 
-st.set_page_config(page_title="LocalHunter V16 (Stable)", page_icon="📍", layout="wide")
+st.set_page_config(page_title="LocalHunter V17 (Final)", page_icon="🎯", layout="wide")
 
 # CSS
 st.markdown("""
@@ -19,20 +19,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Secrets Management
+# Secrets
 try:
     api_key = st.secrets.get("MISTRAL_KEY", st.secrets.get("OPENAI_KEY"))
     serpapi_key = st.secrets.get("SERPAPI_KEY") 
     client = openai.OpenAI(api_key=api_key, base_url="https://api.mistral.ai/v1")
 except:
-    st.error("⚠️ ERREUR CONFIGURATION : Les clés API ne sont pas détectées.")
+    st.error("⚠️ Clés API manquantes (.streamlit/secrets.toml).")
     st.stop()
 
 if not serpapi_key:
-    st.error("⚠️ ERREUR CRITIQUE : La clé SERPAPI_KEY est manquante.")
+    st.error("⚠️ Clé SERPAPI_KEY manquante.")
     st.stop()
 
-# --- FONCTIONS TECHNIQUES ---
+# --- HELPER FUNCTIONS ---
 
 def clean_html_output(raw_text):
     text = raw_text.replace("```html", "").replace("```", "").strip()
@@ -73,7 +73,7 @@ def surgical_email_config(html_content, email):
     else:
         return html_content.replace('<form', f'<form action="https://formsubmit.co/{email}"')
 
-# --- MOTEUR DE SCAN ---
+# --- SCAN LOGIC (V15 GPS FIX) ---
 
 def check_site_quality(url):
     if not url: return "NONE"
@@ -113,7 +113,7 @@ def smart_search(job, city, api_key, max_pages):
             if "error" in data:
                 st.warning(f"Note SerpApi (Page {page+1}) : {data['error']}")
                 if "Missing location" in data['error']:
-                    st.error("⚠️ Impossible de paginer sans coordonnées GPS. Précisez la ville.")
+                    st.error("⚠️ Erreur GPS. Précisez la ville (ex: 'Lyon France').")
                 break
             
             if page == 0:
@@ -136,36 +136,35 @@ def smart_search(job, city, api_key, max_pages):
                     all_results.append(res)
                     seen_ids.add(pid)
             
-            time.sleep(2)
+            time.sleep(1.5)
             
         except Exception as e:
             st.error(f"Erreur technique : {e}")
             break
             
-    status_container.success(f"✅ Scan Terminé : {len(all_results)} résultats trouvés.")
+    status_container.success(f"✅ Terminé : {len(all_results)} résultats.")
     time.sleep(2)
     status_container.empty()
     
-    # TRI (C'est ici que ça plantait avant, corrigé maintenant)
     order = {"NONE": 0, "WEAK": 1, "OK": 2}
     all_results.sort(key=lambda x: order[x["site_quality"]])
-    
     return all_results
 
-# --- GENERATION ---
+# --- GENERATION AI ---
+
 def generate_code(name, job, city, addr, tel):
     prompt = f"""
     Agis comme un expert Web Designer. Crée un site One-Page HTML5 (TailwindCSS) pour {name} ({job}) à {city}.
     Infos: {addr}, {tel}.
     
-    IMAGES (Strictement <img src="...">) :
+    IMAGES OBLIGATOIRES (Strictement <img src="...">) :
     1. Hero: "https://loremflickr.com/1600/900/{job.replace(' ', ',')}?lock=1"
     2. About: "https://loremflickr.com/800/800/{job.replace(' ', ',')}?lock=2"
     3. Services: 3 images random lock=3,4,5.
     
     STRUCTURE :
     - Navbar, Hero (H1+CTA), Confiance (Stats), About, Services (3 cartes), FAQ, Footer.
-    - Formulaire fonctionnel: <form action="https://formsubmit.co/votre-email@gmail.com" method="POST">
+    - Formulaire: <form action="https://formsubmit.co/votre-email@gmail.com" method="POST">
     - Design : Moderne, épuré, ombres douces (shadow-lg), rounded-xl.
     """
     try:
@@ -180,9 +179,9 @@ def generate_email_prospection(name, status):
         return resp.choices[0].message.content
     except: return "Erreur Email"
 
-# --- UI ---
-st.title("LocalHunter V16 (Stable)")
+# --- MAIN UI ---
 
+st.title("LocalHunter V17 (Final)")
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
 with tab1:
@@ -191,7 +190,7 @@ with tab1:
     with c2: city = st.text_input("Ville", "Lyon")
     with c3: pages = st.number_input("Pages (20 res/page)", 1, 10, 3)
     with c4: 
-        st.write("")
+        st.write("") 
         st.write("")
         if st.button("LANCER LE SCAN", use_container_width=True):
             st.session_state.prospects = []
@@ -211,8 +210,60 @@ with tab1:
             with st.expander(f"{'🔴' if q=='NONE' else ('🟠' if q=='WEAK' else '🟢')} {p.get('title')} - {p.get('address')}"):
                 st.markdown(f"**Statut Web :** {badge} <br> **Tel:** {p.get('phone')}", unsafe_allow_html=True)
                 
-                c_a, c_b = st.columns(2)
-                with c_a:
+                colA, colB = st.columns(2)
+                with colA:
                     if st.button("⚡ Générer Site", key=f"g_{p.get('place_id')}"):
                         with st.spinner("Création..."):
-                            code = generate_code(p.get('
+                            code = generate_code(p.get('title'), job, city, p.get('address'), p.get('phone'))
+                            st.session_state['final'] = code
+                            st.success("Fait ! Voir Atelier.")
+                with colB:
+                    if st.button("📧 Email", key=f"e_{p.get('place_id')}"):
+                        st.text_area("Email", generate_email_prospection(p.get('title'), q))
+
+with tab2:
+    st.header("🔧 Atelier")
+    
+    if 'final' in st.session_state:
+        st.download_button("💾 TÉLÉCHARGER LE SITE", st.session_state['final'], "index.html", "text/html", use_container_width=True)
+        st.divider()
+
+    up_html = st.file_uploader("Charger HTML", type=['html'])
+    if up_html:
+        h = hashlib.md5(up_html.getvalue()).hexdigest()
+        if st.session_state.get('chash') != h:
+            st.session_state['final'] = up_html.getvalue().decode("utf-8")
+            st.session_state['chash'] = h
+
+    if 'final' in st.session_state:
+        html = st.session_state['final']
+        c1, c2 = st.columns(2)
+        
+        with c1:
+            st.subheader("🖼️ Images")
+            imgs = get_images_from_html(html)
+            if imgs:
+                idx = st.selectbox("Choisir image", range(len(imgs)), format_func=lambda x: f"Image #{x+1}")
+                up_img = st.file_uploader("Nouvelle image", type=['jpg','png'], key="u_img")
+                if up_img and st.button("Remplacer"):
+                    b64 = image_to_base64(up_img)
+                    if b64:
+                        st.session_state['final'] = replace_specific_image(html, b64, idx)
+                        st.rerun()
+            else:
+                st.warning("Aucune image trouvée dans le code HTML.")
+        
+        with c2:
+            st.subheader("✍️ Texte & Email")
+            em = st.text_input("Email Client")
+            if st.button("Configurer Email"):
+                if "@" in em:
+                    st.session_state['final'] = surgical_email_config(html, em)
+                    st.success("OK")
+            
+            new_txt = st.text_area("Editer HTML", html, height=200)
+            if st.button("Sauvegarder"):
+                st.session_state['final'] = new_txt
+                st.rerun()
+
+        st.components.v1.html(st.session_state['final'], height=800, scrolling=True)
