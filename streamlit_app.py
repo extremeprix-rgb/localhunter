@@ -111,4 +111,48 @@ def smart_search(job, city, api_key, max_pages):
             params["ll"] = gps_context
         
         try:
-            client_
+            client_search = GoogleSearch(params)
+            data = client_search.get_dict()
+            
+            # Gestion erreurs API
+            if "error" in data:
+                st.warning(f"Note SerpApi (Page {page+1}) : {data['error']}")
+                if "Missing location" in data['error']:
+                    st.error("⚠️ Impossible de paginer sans coordonnées GPS. Précisez la ville (ex: 'Lyon France').")
+                break
+            
+            # Extraction du GPS pour les pages suivantes (seulement au premier tour)
+            if page == 0:
+                try:
+                    meta_url = data.get("search_metadata", {}).get("google_maps_url", "")
+                    match = re.search(r'@([-0-9.]+),([-0-9.]+),([0-9.]+)z', meta_url)
+                    if match:
+                        gps_context = f"@{match.group(1)},{match.group(2)},{match.group(3)}z"
+                except:
+                    pass
+
+            local_results = data.get("local_results", [])
+            
+            if not local_results:
+                break 
+            
+            for res in local_results:
+                pid = res.get("place_id", str(hash(res.get("title"))))
+                if pid not in seen_ids:
+                    res["site_quality"] = check_site_quality(res.get("website"))
+                    all_results.append(res)
+                    seen_ids.add(pid)
+            
+            time.sleep(2) # Pause anti-blocage
+            
+        except Exception as e:
+            st.error(f"Erreur technique : {e}")
+            break
+            
+    status_container.success(f"✅ Scan Terminé : {len(all_results)} résultats trouvés.")
+    time.sleep(2)
+    status_container.empty()
+    
+    # TRI
+    order = {"NONE": 0, "WEAK": 1, "OK": 2}
+    all_results.sort(key=lambda x: order[x["site
