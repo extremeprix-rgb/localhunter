@@ -10,7 +10,7 @@ import zipfile
 import io
 from PIL import Image
 
-st.set_page_config(page_title="LocalHunter V36 (Gist Manual)", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="LocalHunter V37 (Workflow Final)", page_icon="🎯", layout="wide")
 
 # CSS
 st.markdown("""
@@ -77,7 +77,6 @@ def create_zip_archive(html_content):
 def image_to_base64(uploaded_file):
     if uploaded_file is None: return None
     try:
-        # Compression légère pour que le Gist ne soit pas trop lourd
         image = Image.open(uploaded_file)
         if image.mode in ("RGBA", "P"): image = image.convert("RGB")
         image.thumbnail((1000, 1000))
@@ -222,13 +221,13 @@ def generate_prospection_content(name, type_content, link_url):
         if link_url:
             prompt = f"Rédige un Email AIDA très court pour {name}. J'ai créé une maquette de leur site, voici le lien : {link_url}. Donne juste le corps du mail, pas de politesses inutiles."
         else:
-            prompt = f"Rédige un Email AIDA très court pour {name} pour proposer une maquette de site web. Donne juste le corps du mail."
+            prompt = f"Rédige un Email AIDA très court pour {name} pour proposer une maquette de site web. Donne juste le corps du mail sans lien."
             
     elif type_content == "SMS":
         if link_url:
             prompt = f"Rédige un SMS pour {name} (max 160 caractères). 'Bonjour, j'ai fait une maquette de votre site : {link_url}. Qu'en pensez-vous ?'."
         else:
-            prompt = f"Rédige un SMS pour {name} (max 160 caractères) pour proposer une démo de site web."
+            prompt = f"Rédige un SMS pour {name} (max 160 caractères) pour proposer une démo de site web (sans lien encore)."
             
     elif type_content == "SCRIPT":
         prompt = f"Script appel téléphonique direct pour {name}. But: avoir le 06 pour envoyer le lien par SMS. Pas de blabla."
@@ -239,7 +238,7 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V36 (Gist Manual)")
+st.title("LocalHunter V37 (Workflow Final)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -278,7 +277,7 @@ with tab1:
                             st.success("Fait ! Voir Atelier.")
 
                 st.markdown("---")
-                hosted_link = st.text_input("🔗 Lien Final (ex: raw.githack.com/...)", key=f"lnk_{p.get('place_id')}")
+                hosted_link = st.text_input("🔗 Lien Githack (ex: raw.githack.com/...)", key=f"lnk_{p.get('place_id')}")
 
                 t_email, t_sms, t_script = st.tabs(["📧 Email", "📱 SMS", "📞 Téléphone"])
                 
@@ -308,15 +307,14 @@ with tab2:
     if st.session_state.final:
         st.markdown("""
         <div class="step-box">
-            <h3>🛡️ HÉBERGEMENT INFAILLIBLE (GITHUB GIST)</h3>
-            <p>Cette méthode marche TOUJOURS (car GitHub ne bannit pas).</p>
+            <h3>🛡️ HÉBERGEMENT GITHUB GIST (100% FONCTIONNEL)</h3>
             <ol>
-                <li>Copiez le code HTML (Bouton ci-dessous).</li>
+                <li>Copiez le code HTML ci-dessous.</li>
                 <li>Allez sur <a href="https://gist.github.com" target="_blank" class="btn-link">1. OUVRIR GIST ↗</a></li>
                 <li>Collez le code. Nommez le fichier <code>index.html</code>. Cliquez sur <b>Create public gist</b>.</li>
                 <li>Cliquez sur le bouton <b>"Raw"</b> sur votre Gist. Copiez l'URL.</li>
                 <li>Allez sur <a href="https://raw.githack.com" target="_blank" class="btn-link">2. OUVRIR GITHACK ↗</a></li>
-                <li>Collez l'URL Raw sur Githack et copiez le lien "Production" (Use this URL in production).</li>
+                <li>Collez l'URL Raw sur Githack et copiez le lien "Production".</li>
             </ol>
         </div>
         """, unsafe_allow_html=True)
