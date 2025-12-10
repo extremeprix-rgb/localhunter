@@ -219,23 +219,57 @@ def generate_prospection_content(name, type_content, link_url):
     
     if type_content == "EMAIL":
         if link_url:
-            prompt = f"Rédige un Email AIDA très court pour {name}. J'ai créé une maquette de leur site, voici le lien : {link_url}. Donne juste le corps du mail, pas de politesses inutiles."
+            prompt = f"""
+            Rédige un Email de prospection AIDA ultra-convaincant pour l'entreprise "{name}".
+            STRUCTURE :
+            1. Accroche : "J'ai remarqué que vous n'aviez pas de site web..."
+            2. Intérêt : "Aujourd'hui, 80% des clients cherchent sur Google avant d'appeler."
+            3. Désir : "J'ai pris l'initiative de créer une maquette complète pour vous, gratuitement."
+            4. Action : "Cliquez ici pour voir votre site : {link_url}"
+            5. Conclusion : "Je peux le mettre en ligne cette semaine. On s'appelle ?"
+            Règle : Ton professionnel, empathique, direct. Pas de blabla marketing lourd.
+            """
         else:
-            prompt = f"Rédige un Email AIDA très court pour {name} pour proposer une maquette de site web. Donne juste le corps du mail sans lien."
+            prompt = f"""
+            Rédige un Email de prospection AIDA pour "{name}" (Artisan/PME).
+            Objet : Votre visibilité sur Google
+            Corps : 
+            - Bonjour, je suis développeur web local.
+            - J'ai vu que vous n'aviez pas de site. C'est dommage pour votre référencement.
+            - J'ai déjà préparé une maquette démo spécialement pour vous.
+            - Est-ce que je peux vous envoyer le lien par SMS ou Email ?
+            - Cordialement.
+            """
             
     elif type_content == "SMS":
         if link_url:
-            prompt = f"Rédige un SMS pour {name} (max 160 caractères). 'Bonjour, j'ai fait une maquette de votre site : {link_url}. Qu'en pensez-vous ?'."
+            prompt = f"""
+            Rédige un SMS commercial percutant (max 160 caractères) pour {name}.
+            Message : "Bonjour, c'est [Votre Nom]. J'ai créé un site web démo pour votre entreprise. Regardez ici : {link_url} . Intéressé pour en discuter ?"
+            """
         else:
-            prompt = f"Rédige un SMS pour {name} (max 160 caractères) pour proposer une démo de site web (sans lien encore)."
+            prompt = f"""
+            Rédige un SMS commercial court (max 160 caractères) pour {name}.
+            Message : "Bonjour {name}, je suis webmaster local. J'ai réalisé une maquette de site pour vous. A quel numéro puis-je vous envoyer le lien ?"
+            """
             
     elif type_content == "SCRIPT":
-        prompt = f"Script appel téléphonique direct pour {name}. But: avoir le 06 pour envoyer le lien par SMS. Pas de blabla."
+        prompt = f"""
+        Rédige un script de prospection téléphonique (Cold Call) pour appeler {name}.
+        Phase 1 : Introduction (10s)
+        "Bonjour, c'est [Nom], je suis voisin à [Ville]. Je ne vous vends rien, j'ai juste une surprise pour vous."
+        Phase 2 : Le Pitch (20s)
+        "J'ai vu que vous n'aviez pas de site web. J'en ai créé un hier soir pour vous montrer ce que ça donnerait. C'est bluffant."
+        Phase 3 : Closing
+        "Je vous envoie le lien par SMS maintenant ? Vous me dites ce que vous en pensez ?"
+        Phase 4 : Traitement objection "Pas intéressé"
+        "C'est gratuit de regarder. Ça ne vous engage à rien."
+        """
     
     try:
         resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
-        return resp.choices[0].message.content.replace('"', '') 
-    except: return "Erreur Gen"
+        return resp.choices[0].message.content 
+    except: return "Erreur de génération IA."
 
 # --- UI ---
 st.title("LocalHunter V37 (Workflow Final)")
@@ -277,7 +311,13 @@ with tab1:
                             st.success("Fait ! Voir Atelier.")
 
                 st.markdown("---")
-                hosted_link = st.text_input("🔗 Lien Githack (ex: raw.githack.com/...)", key=f"lnk_{p.get('place_id')}")
+                
+                # Input Lien Unique (Persistant)
+                link_key = f"lnk_{p.get('place_id')}"
+                if link_key not in st.session_state:
+                    st.session_state[link_key] = ""
+                
+                hosted_link = st.text_input("🔗 Lien Githack / Site (Optionnel)", key=link_key)
 
                 t_email, t_sms, t_script = st.tabs(["📧 Email", "📱 SMS", "📞 Téléphone"])
                 
@@ -307,7 +347,7 @@ with tab2:
     if st.session_state.final:
         st.markdown("""
         <div class="step-box">
-            <h3>🛡️ HÉBERGEMENT GITHUB GIST (100% FONCTIONNEL)</h3>
+            <h3>🛡️ HÉBERGEMENT INFAILLIBLE (GITHUB GIST)</h3>
             <ol>
                 <li>Copiez le code HTML ci-dessous.</li>
                 <li>Allez sur <a href="https://gist.github.com" target="_blank" class="btn-link">1. OUVRIR GIST ↗</a></li>
