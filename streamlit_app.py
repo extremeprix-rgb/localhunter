@@ -10,7 +10,7 @@ import zipfile
 import io
 from PIL import Image
 
-st.set_page_config(page_title="LocalHunter V39 (Workflow Logic)", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="LocalHunter V40 (SMS Persuasif)", page_icon="🎯", layout="wide")
 
 # CSS
 st.markdown("""
@@ -230,22 +230,22 @@ def generate_prospection_content(name, type_content, link_url):
     if type_content == "EMAIL":
         if link_url:
             prompt = f"""
-            Rédige UNIQUEMENT le corps de l'email pour l'entreprise "{name}". Aucune introduction, aucune remarque.
+            Rédige un Email de prospection AIDA ultra-convaincant pour l'entreprise "{name}".
             
-            Email de prospection AIDA :
+            STRUCTURE :
             1. Accroche : "J'ai remarqué que vous n'aviez pas de site web..."
             2. Intérêt : "Aujourd'hui, 80% des clients cherchent sur Google avant d'appeler."
             3. Désir : "J'ai pris l'initiative de créer une maquette complète pour vous, gratuitement."
             4. Action : "Cliquez ici pour voir votre site : {link_url}"
             5. Conclusion : "Je peux le mettre en ligne cette semaine. On s'appelle ?"
             
-            Règle : Ton professionnel, empathique, direct.
+            Règle : Ton professionnel, empathique, direct. Pas de blabla marketing lourd.
             """
         else:
             prompt = f"""
-            Rédige UNIQUEMENT le corps de l'email pour "{name}". Aucune intro.
-            
-            Email de prospection :
+            Rédige un Email de prospection AIDA pour "{name}" (Artisan/PME).
+            Objet : Votre visibilité sur Google
+            Corps : 
             - Bonjour, je suis développeur web local.
             - J'ai vu que vous n'aviez pas de site. C'est dommage pour votre référencement.
             - J'ai déjà préparé une maquette démo spécialement pour vous.
@@ -256,18 +256,25 @@ def generate_prospection_content(name, type_content, link_url):
     elif type_content == "SMS":
         if link_url:
             prompt = f"""
-            Rédige UNIQUEMENT le SMS pour {name} (max 160 caractères).
-            Message : "Bonjour, c'est [Votre Nom]. J'ai créé un site web démo pour votre entreprise. Regardez ici : {link_url} . Intéressé pour en discuter ?"
+            Rédige un SMS de prospection ultra-persuasif pour l'artisan "{name}". (Max 250 caractères).
+            
+            Structure :
+            1. Approche directe : "Bonjour, j'ai vu que vous n'aviez pas de site."
+            2. La solution (Gratuite) : "J'ai pris la liberté de vous en créer un pour vous montrer le potentiel."
+            3. Le lien : "{link_url}"
+            4. Appel à l'action : "On peut en discuter 5min ?"
+            
+            Ton : Professionnel, serviable, pas de spam.
             """
         else:
             prompt = f"""
-            Rédige UNIQUEMENT le SMS pour {name} (max 160 caractères).
-            Message : "Bonjour {name}, je suis webmaster local. J'ai réalisé une maquette de site pour vous. A quel numéro puis-je vous envoyer le lien ?"
+            Rédige un SMS de prospection intriguant pour "{name}" (Max 160 caractères).
+            Message : "Bonjour, je suis développeur dans le coin. J'ai créé une maquette de site web complète pour votre entreprise (gratuitement). Sur quel numéro puis-je vous envoyer le lien pour que vous jetiez un œil ?"
             """
             
     elif type_content == "SCRIPT":
         prompt = f"""
-        Rédige UNIQUEMENT le script de prospection pour appeler {name}. Pas de texte avant ou après.
+        Rédige un script de prospection téléphonique (Cold Call) pour appeler {name}.
         
         Phase 1 : Introduction (10s)
         "Bonjour, c'est [Nom], je suis voisin à [Ville]. Je ne vous vends rien, j'ai juste une surprise pour vous."
@@ -277,20 +284,18 @@ def generate_prospection_content(name, type_content, link_url):
         
         Phase 3 : Closing
         "Je vous envoie le lien par SMS maintenant ? Vous me dites ce que vous en pensez ?"
+        
+        Phase 4 : Traitement objection "Pas intéressé"
+        "C'est gratuit de regarder. Ça ne vous engage à rien."
         """
     
     try:
         resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
-        content = resp.choices[0].message.content
-        # Nettoyage strict pour ne garder que le message final
-        content = content.strip().strip('"')
-        if ":" in content[:20]:
-            content = content.split(":", 1)[1].strip()
-        return content
+        return resp.choices[0].message.content 
     except: return "Erreur de génération IA."
 
 # --- UI ---
-st.title("LocalHunter V39 (Workflow Logic)")
+st.title("LocalHunter V40 (SMS Persuasif)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER (Edit & Send)"])
 
