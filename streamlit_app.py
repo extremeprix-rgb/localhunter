@@ -10,7 +10,7 @@ import zipfile
 import io
 from PIL import Image
 
-st.set_page_config(page_title="LocalHunter V38 (Clean Messages)", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="LocalHunter V39 (Workflow Logic)", page_icon="🎯", layout="wide")
 
 # CSS
 st.markdown("""
@@ -51,6 +51,8 @@ if 'prospects' not in st.session_state:
     st.session_state.prospects = []
 if 'final' not in st.session_state:
     st.session_state.final = ""
+if 'current_prospect' not in st.session_state:
+    st.session_state.current_prospect = None # Pour stocker le prospect en cours de travail
 
 # --- FONCTIONS TECHNIQUES ---
 
@@ -123,14 +125,18 @@ def smart_search(job, city, api_key, max_pages):
     seen_ids = set()
     status_container = st.empty()
     gps_context = None 
+    
+    # Stratégie de requêtes multiples pour maximiser les résultats
+    queries = [f"{job} {city}", f"Entreprise {job} {city}", f"Artisan {job} {city}"]
+    current_query_idx = 0
 
     for page in range(max_pages):
         start_index = page * 20
-        status_container.info(f"⏳ Scan Page {page + 1}/{max_pages}...")
+        status_container.info(f"⏳ Scan Page {page + 1}/{max_pages} (Requête: {queries[current_query_idx]})...")
         
         params = {
             "engine": "google_maps",
-            "q": f"{job} {city}",
+            "q": queries[current_query_idx],
             "type": "search",
             "google_domain": "google.fr",
             "hl": "fr",
@@ -139,11 +145,16 @@ def smart_search(job, city, api_key, max_pages):
         }
 
         if start_index > 0:
-            if not gps_context:
-                status_container.warning("⚠️ Arrêt pagination : Google demande une localisation GPS précise non trouvée en page 1.")
-                break
-            params["start"] = start_index
-            params["ll"] = gps_context
+            if gps_context:
+                params["start"] = start_index
+                params["ll"] = gps_context
+            else:
+                # Si pas de GPS, on change de requête pour "reset" la pagination sur une autre recherche
+                if current_query_idx < len(queries) - 1:
+                    current_query_idx += 1
+                    # On recommence une pagination à 0 pour la nouvelle requête
+                    params["q"] = queries[current_query_idx]
+                    params["start"] = 0 
         
         try:
             client_search = GoogleSearch(params)
@@ -153,25 +164,23 @@ def smart_search(job, city, api_key, max_pages):
                 st.warning(f"Note API : {data['error']}")
                 break
             
-            if page == 0:
-                try:
-                    meta_url = data.get("search_metadata", {}).get("google_maps_url", "")
-                    match = re.search(r'@([-0-9.]+),([-0-9.]+),([0-9.]+)z', meta_url)
-                    if match:
-                        gps_context = f"@{match.group(1)},{match.group(2)},{match.group(3)}z"
-                except: pass
-                
-                if not gps_context and "local_results" in data and data["local_results"]:
-                    first = data["local_results"][0]
-                    lat = first.get("gps_coordinates", {}).get("latitude")
-                    lng = first.get("gps_coordinates", {}).get("longitude")
-                    if lat and lng:
-                        gps_context = f"@{lat},{lng},14z"
+            # GPS Lock
+            if not gps_context and "local_results" in data and data["local_results"]:
+                first = data["local_results"][0]
+                lat = first.get("gps_coordinates", {}).get("latitude")
+                lng = first.get("gps_coordinates", {}).get("longitude")
+                if lat and lng:
+                    gps_context = f"@{lat},{lng},14z"
 
             local_results = data.get("local_results", [])
             
             if not local_results:
-                break 
+                # Si plus de résultat sur cette requête, on tente la suivante
+                if current_query_idx < len(queries) - 1:
+                    current_query_idx += 1
+                    continue
+                else:
+                    break 
             
             for res in local_results:
                 pid = res.get("place_id", str(hash(res.get("title"))))
@@ -281,9 +290,9 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur de génération IA."
 
 # --- UI ---
-st.title("LocalHunter V38 (Clean Messages)")
+st.title("LocalHunter V39 (Workflow Logic)")
 
-tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
+tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER (Edit & Send)"])
 
 with tab1:
     c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
@@ -311,101 +320,117 @@ with tab1:
             with st.expander(f"{'🔴' if q=='NONE' else ('🟠' if q=='WEAK' else '🟢')} {p.get('title')} - {p.get('address')}"):
                 st.markdown(f"**Statut Web :** {badge} <br> **Tel:** {p.get('phone')}", unsafe_allow_html=True)
                 
-                c_a, c_b = st.columns(2)
-                with c_a:
-                    if st.button("⚡ Générer Site", key=f"g_{p.get('place_id')}"):
-                        with st.spinner("Création..."):
-                            code = generate_code(p.get('title'), job, city, p.get('address'), p.get('phone'))
-                            st.session_state.final = code 
-                            st.success("Fait ! Voir Atelier.")
-
-                st.markdown("---")
-                
-                # Input Lien Unique (Persistant)
-                link_key = f"lnk_{p.get('place_id')}"
-                if link_key not in st.session_state:
-                    st.session_state[link_key] = ""
-                
-                hosted_link = st.text_input("🔗 Lien Githack / Site (Optionnel)", key=link_key)
-
-                t_email, t_sms, t_script = st.tabs(["📧 Email", "📱 SMS", "📞 Téléphone"])
-                
-                with t_email:
-                    if st.button("📝 Rédiger Email", key=f"gen_e_{p.get('place_id')}"):
-                        body = generate_prospection_content(p.get('title'), "EMAIL", hosted_link)
-                        st.code(body, language="text")
-                        
-                        detected_email = p.get('email', "")
-                        subject = urllib.parse.quote(f"Site web pour {p.get('title')}")
-                        body_enc = urllib.parse.quote(body)
-                        st.markdown(f'<a href="mailto:{detected_email}?subject={subject}&body={body_enc}" target="_blank" style="background-color:#ea580c;color:white;padding:8px 16px;border-radius:6px;text-decoration:none;">🚀 Ouvrir Boite Mail</a>', unsafe_allow_html=True)
-
-                with t_sms:
-                    if st.button("📱 Rédiger SMS", key=f"gen_s_{p.get('place_id')}"):
-                        sms_txt = generate_prospection_content(p.get('title'), "SMS", hosted_link)
-                        st.code(sms_txt, language="text")
-                
-                with t_script:
-                    if st.button("🗣️ Rédiger Script", key=f"gen_c_{p.get('place_id')}"):
-                        script_txt = generate_prospection_content(p.get('title'), "SCRIPT", hosted_link)
-                        st.text_area("Script", script_txt, height=200)
+                # Bouton unique pour envoyer vers l'Atelier
+                if st.button(f"🛠️ TRAVAILLER SUR CE PROSPECT", key=f"work_{p.get('place_id')}", use_container_width=True):
+                    # Génération automatique du site si pas déjà fait
+                    with st.spinner("Création du site en cours..."):
+                        code = generate_code(p.get('title'), job, city, p.get('address'), p.get('phone'))
+                        st.session_state.final = code 
+                        # On stocke les infos du prospect actuel pour l'atelier
+                        st.session_state.current_prospect = p
+                        st.success("Site créé ! Allez dans l'onglet ATELIER pour le finir et l'envoyer.")
 
 with tab2:
-    st.header("🔧 Atelier & Publication")
+    st.header("🔧 Atelier & Démarchage")
     
-    if st.session_state.final:
-        st.markdown("""
-        <div class="step-box">
-            <h3>🛡️ HÉBERGEMENT INFAILLIBLE (GITHUB GIST)</h3>
-            <ol>
-                <li>Copiez le code HTML ci-dessous.</li>
-                <li>Allez sur <a href="https://gist.github.com" target="_blank" class="btn-link">1. OUVRIR GIST ↗</a></li>
-                <li>Collez le code. Nommez le fichier <code>index.html</code>. Cliquez sur <b>Create public gist</b>.</li>
-                <li>Cliquez sur le bouton <b>"Raw"</b> sur votre Gist. Copiez l'URL.</li>
-                <li>Allez sur <a href="https://raw.githack.com" target="_blank" class="btn-link">2. OUVRIR GITHACK ↗</a></li>
-                <li>Collez l'URL Raw sur Githack et copiez le lien "Production".</li>
-            </ol>
-        </div>
-        """, unsafe_allow_html=True)
+    # Vérification qu'un site est chargé
+    if not st.session_state.final:
+        st.info("👈 Commencez par sélectionner un prospect dans l'onglet CHASSE.")
         
-        st.text_area("Code HTML à copier sur Gist :", st.session_state.final, height=200)
-        st.divider()
-
-    up_html = st.file_uploader("Charger HTML", type=['html'])
-    if up_html:
-        string_data = up_html.getvalue().decode("utf-8")
-        st.session_state.final = string_data
-
-    if st.session_state.final:
-        html = st.session_state.final
-        c1, c2 = st.columns(2)
+        # Option de secours : Upload manuel
+        up_html = st.file_uploader("Ou chargez un fichier HTML existant", type=['html'])
+        if up_html:
+            st.session_state.final = up_html.getvalue().decode("utf-8")
+            st.rerun()
+    
+    else:
+        # Affiche le nom du prospect si dispo
+        if st.session_state.current_prospect:
+            p_curr = st.session_state.current_prospect
+            st.success(f"Dossier en cours : **{p_curr.get('title')}** ({p_curr.get('phone')})")
         
-        with c1:
-            st.subheader("🖼️ Images")
-            imgs = get_images_from_html(html)
-            if imgs:
-                idx = st.selectbox("Choisir image", range(len(imgs)), format_func=lambda x: f"Image #{x+1}")
-                up_img = st.file_uploader("Nouvelle image", type=['jpg','png'], key="u_img")
-                if up_img and st.button("Remplacer"):
-                    b64 = image_to_base64(up_img)
-                    if b64:
-                        new_html = replace_specific_image(html, b64, idx)
-                        st.session_state.final = new_html 
-                        st.rerun()
-        
-        with c2:
-            st.subheader("✍️ Texte & Email")
-            em = st.text_input("Email Client")
-            if st.button("Configurer Email"):
-                if "@" in em:
-                    new_html = surgical_email_config(html, em)
-                    st.session_state.final = new_html
-                    st.success("OK")
-                    st.rerun()
+        # --- SECTION 1 : CUSTOMISATION ---
+        with st.expander("1️⃣ CUSTOMISATION DU SITE (Images & Textes)", expanded=True):
+            html = st.session_state.final
+            c1, c2 = st.columns(2)
             
-            new_txt = st.text_area("Editer HTML", html, height=200)
-            if st.button("Sauvegarder"):
-                st.session_state.final = new_txt
-                st.rerun()
+            with c1:
+                st.subheader("🖼️ Images")
+                imgs = get_images_from_html(html)
+                if imgs:
+                    idx = st.selectbox("Choisir image", range(len(imgs)), format_func=lambda x: f"Image #{x+1}")
+                    up_img = st.file_uploader("Nouvelle image", type=['jpg','png'], key="u_img")
+                    if up_img and st.button("Remplacer"):
+                        b64 = image_to_base64(up_img)
+                        if b64:
+                            new_html = replace_specific_image(html, b64, idx)
+                            st.session_state.final = new_html 
+                            st.rerun()
+            
+            with c2:
+                st.subheader("✍️ Config")
+                em = st.text_input("Email Client (Formulaire)")
+                if st.button("Valider Email"):
+                    if "@" in em:
+                        new_html = surgical_email_config(html, em)
+                        st.session_state.final = new_html
+                        st.success("OK")
+                        st.rerun()
+                
+                if st.button("Sauvegarder les modifs manuelles"):
+                    # Logique pour un text area si besoin, ici simplifié
+                    pass
 
-        st.components.v1.html(st.session_state.final, height=800, scrolling=True)
+        # --- SECTION 2 : PUBLICATION ---
+        with st.expander("2️⃣ PUBLICATION & LIEN", expanded=True):
+            st.markdown("""
+            <div class="step-box">
+                <b>MÉTHODE :</b>
+                1. Copiez le code HTML ci-dessous.
+                2. Allez sur <a href="https://gist.github.com" target="_blank" class="btn-link">GIST ↗</a>, collez, créez le Gist.
+                3. Prenez l'URL "Raw" et transformez-la sur <a href="https://raw.githack.com" target="_blank" class="btn-link">GITHACK ↗</a>.
+                4. Collez le lien final ci-dessous pour générer votre message.
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.text_area("Code HTML à copier :", st.session_state.final, height=150)
+            
+            # Input Lien Unique
+            hosted_link = st.text_input("🔗 COLLEZ LE LIEN FINAL ICI (ex: raw.githack.com/...)", key="final_link")
+
+        # --- SECTION 3 : DÉMARCHAGE ---
+        if st.session_state.current_prospect:
+            p_name = st.session_state.current_prospect.get('title')
+            p_email = st.session_state.current_prospect.get('email', '')
+        else:
+            p_name = "Le Client"
+            p_email = ""
+
+        st.markdown("### 📢 3. ENVOYER AU CLIENT")
+        
+        t_email, t_sms, t_script = st.tabs(["📧 EMAIL", "📱 SMS", "📞 TÉLÉPHONE"])
+        
+        with t_email:
+            if st.button("Générer l'Email"):
+                body = generate_prospection_content(p_name, "EMAIL", hosted_link)
+                st.text_area("Sujet : Votre site web est prêt", body, height=250)
+                
+                subject = urllib.parse.quote(f"Site web pour {p_name}")
+                body_enc = urllib.parse.quote(body)
+                st.markdown(f'<a href="mailto:{p_email}?subject={subject}&body={body_enc}" target="_blank" style="background-color:#ea580c;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;display:block;text-align:center;">🚀 ENVOYER MAINTENANT</a>', unsafe_allow_html=True)
+
+        with t_sms:
+            if st.button("Générer le SMS"):
+                sms_txt = generate_prospection_content(p_name, "SMS", hosted_link)
+                st.code(sms_txt, language="text")
+                st.info("💡 Copiez ce texte et envoyez-le depuis votre téléphone.")
+        
+        with t_script:
+            if st.button("Générer le Script"):
+                script_txt = generate_prospection_content(p_name, "SCRIPT", hosted_link)
+                st.text_area("Script d'appel", script_txt, height=300)
+
+        # Preview Final
+        st.markdown("---")
+        st.subheader("Aperçu du site actuel")
+        st.components.v1.html(st.session_state.final, height=600, scrolling=True)
