@@ -10,7 +10,7 @@ import zipfile
 import io
 from PIL import Image
 
-st.set_page_config(page_title="LocalHunter V35 (Gist Hosting)", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="LocalHunter V36 (Gist Manual)", page_icon="🛡️", layout="wide")
 
 # CSS
 st.markdown("""
@@ -20,7 +20,16 @@ st.markdown("""
     .badge-weak { background-color: #ffedd5; color: #9a3412; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; border: 1px solid #f97316; }
     .badge-ok { background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; }
     .step-box { background-color: #f0fdf4; border: 1px solid #16a34a; padding: 20px; border-radius: 10px; margin: 15px 0; }
-    .gist-link { font-family: monospace; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; }
+    .btn-link { 
+        display: inline-block; 
+        background-color: #16a34a; 
+        color: white !important; 
+        padding: 8px 16px; 
+        border-radius: 6px; 
+        text-decoration: none; 
+        font-weight: bold; 
+        margin-top: 5px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -230,7 +239,7 @@ def generate_prospection_content(name, type_content, link_url):
     except: return "Erreur Gen"
 
 # --- UI ---
-st.title("LocalHunter V35 (Gist Hosting)")
+st.title("LocalHunter V36 (Gist Manual)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
@@ -269,7 +278,7 @@ with tab1:
                             st.success("Fait ! Voir Atelier.")
 
                 st.markdown("---")
-                hosted_link = st.text_input("🔗 Lien Githack (ex: raw.githack.com/...)", key=f"lnk_{p.get('place_id')}")
+                hosted_link = st.text_input("🔗 Lien Final (ex: raw.githack.com/...)", key=f"lnk_{p.get('place_id')}")
 
                 t_email, t_sms, t_script = st.tabs(["📧 Email", "📱 SMS", "📞 Téléphone"])
                 
@@ -303,22 +312,14 @@ with tab2:
             <p>Cette méthode marche TOUJOURS (car GitHub ne bannit pas).</p>
             <ol>
                 <li>Copiez le code HTML (Bouton ci-dessous).</li>
-                <li>Allez sur <a href="https://gist.github.com" target="_blank"><b>gist.github.com</b></a>.</li>
+                <li>Allez sur <a href="https://gist.github.com" target="_blank" class="btn-link">1. OUVRIR GIST ↗</a></li>
                 <li>Collez le code. Nommez le fichier <code>index.html</code>. Cliquez sur <b>Create public gist</b>.</li>
-                <li>Cliquez sur le bouton <b>"Raw"</b> sur votre Gist.</li>
-                <li>Copiez l'URL de cette page brute.</li>
-                <li>Collez cette URL ci-dessous pour la convertir en VRAI LIEN SITE WEB.</li>
+                <li>Cliquez sur le bouton <b>"Raw"</b> sur votre Gist. Copiez l'URL.</li>
+                <li>Allez sur <a href="https://raw.githack.com" target="_blank" class="btn-link">2. OUVRIR GITHACK ↗</a></li>
+                <li>Collez l'URL Raw sur Githack et copiez le lien "Production" (Use this URL in production).</li>
             </ol>
         </div>
         """, unsafe_allow_html=True)
-        
-        # CONVERTISSEUR MAGIQUE GITHACK
-        raw_url = st.text_input("Collez l'URL 'Raw' de GitHub ici :")
-        if raw_url and "gist.githubusercontent" in raw_url:
-            prod_url = raw_url.replace("raw.githubusercontent.com", "raw.githack.com").replace("gist.githubusercontent.com", "raw.githack.com")
-            st.success("✅ LIEN DU SITE PRÊT (Copiez-le) :")
-            st.code(prod_url, language="text")
-            st.markdown(f'<a href="{prod_url}" target="_blank" style="background-color:#16a34a;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;">🌍 VOIR LE SITE EN LIGNE</a>', unsafe_allow_html=True)
         
         st.text_area("Code HTML à copier sur Gist :", st.session_state.final, height=200)
         st.divider()
