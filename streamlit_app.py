@@ -10,7 +10,7 @@ import zipfile
 import io
 from PIL import Image
 
-st.set_page_config(page_title="LocalHunter V37 (Workflow Final)", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="LocalHunter V38 (Clean Messages)", page_icon="🎯", layout="wide")
 
 # CSS
 st.markdown("""
@@ -217,23 +217,26 @@ def generate_code(name, job, city, addr, tel):
 
 def generate_prospection_content(name, type_content, link_url):
     
+    # Prompt optimisé pour la conversion
     if type_content == "EMAIL":
         if link_url:
             prompt = f"""
-            Rédige un Email de prospection AIDA ultra-convaincant pour l'entreprise "{name}".
-            STRUCTURE :
+            Rédige UNIQUEMENT le corps de l'email pour l'entreprise "{name}". Aucune introduction, aucune remarque.
+            
+            Email de prospection AIDA :
             1. Accroche : "J'ai remarqué que vous n'aviez pas de site web..."
             2. Intérêt : "Aujourd'hui, 80% des clients cherchent sur Google avant d'appeler."
             3. Désir : "J'ai pris l'initiative de créer une maquette complète pour vous, gratuitement."
             4. Action : "Cliquez ici pour voir votre site : {link_url}"
             5. Conclusion : "Je peux le mettre en ligne cette semaine. On s'appelle ?"
-            Règle : Ton professionnel, empathique, direct. Pas de blabla marketing lourd.
+            
+            Règle : Ton professionnel, empathique, direct.
             """
         else:
             prompt = f"""
-            Rédige un Email de prospection AIDA pour "{name}" (Artisan/PME).
-            Objet : Votre visibilité sur Google
-            Corps : 
+            Rédige UNIQUEMENT le corps de l'email pour "{name}". Aucune intro.
+            
+            Email de prospection :
             - Bonjour, je suis développeur web local.
             - J'ai vu que vous n'aviez pas de site. C'est dommage pour votre référencement.
             - J'ai déjà préparé une maquette démo spécialement pour vous.
@@ -244,35 +247,41 @@ def generate_prospection_content(name, type_content, link_url):
     elif type_content == "SMS":
         if link_url:
             prompt = f"""
-            Rédige un SMS commercial percutant (max 160 caractères) pour {name}.
+            Rédige UNIQUEMENT le SMS pour {name} (max 160 caractères).
             Message : "Bonjour, c'est [Votre Nom]. J'ai créé un site web démo pour votre entreprise. Regardez ici : {link_url} . Intéressé pour en discuter ?"
             """
         else:
             prompt = f"""
-            Rédige un SMS commercial court (max 160 caractères) pour {name}.
+            Rédige UNIQUEMENT le SMS pour {name} (max 160 caractères).
             Message : "Bonjour {name}, je suis webmaster local. J'ai réalisé une maquette de site pour vous. A quel numéro puis-je vous envoyer le lien ?"
             """
             
     elif type_content == "SCRIPT":
         prompt = f"""
-        Rédige un script de prospection téléphonique (Cold Call) pour appeler {name}.
+        Rédige UNIQUEMENT le script de prospection pour appeler {name}. Pas de texte avant ou après.
+        
         Phase 1 : Introduction (10s)
         "Bonjour, c'est [Nom], je suis voisin à [Ville]. Je ne vous vends rien, j'ai juste une surprise pour vous."
+        
         Phase 2 : Le Pitch (20s)
         "J'ai vu que vous n'aviez pas de site web. J'en ai créé un hier soir pour vous montrer ce que ça donnerait. C'est bluffant."
+        
         Phase 3 : Closing
         "Je vous envoie le lien par SMS maintenant ? Vous me dites ce que vous en pensez ?"
-        Phase 4 : Traitement objection "Pas intéressé"
-        "C'est gratuit de regarder. Ça ne vous engage à rien."
         """
     
     try:
         resp = client.chat.completions.create(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}])
-        return resp.choices[0].message.content 
+        content = resp.choices[0].message.content
+        # Nettoyage strict pour ne garder que le message final
+        content = content.strip().strip('"')
+        if ":" in content[:20]:
+            content = content.split(":", 1)[1].strip()
+        return content
     except: return "Erreur de génération IA."
 
 # --- UI ---
-st.title("LocalHunter V37 (Workflow Final)")
+st.title("LocalHunter V38 (Clean Messages)")
 
 tab1, tab2 = st.tabs(["🕵️ CHASSE", "🎨 ATELIER"])
 
